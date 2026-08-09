@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<title>무럭무럭 그림 마을</title>
+<meta name="theme-color" content="#8fd8ff">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="assets/img/icon-192.png">
+<link rel="apple-touch-icon" href="assets/img/icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="그림 마을">
+<style>
+@font-face {
+  font-family: 'Jua';
+  src: url('assets/font/Jua-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; touch-action: none;
+    -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; overflow: hidden; background: #8fd8ff; }
+body { font-family: 'Jua', 'Apple SD Gothic Neo', sans-serif; color: #4a3f35; }
+#game-root { position: fixed; inset: 0; }
+#game-root canvas { display: block; }
+button { font-family: inherit; cursor: pointer; border: none; }
+
+/* ============ 상단 버튼 ============ */
+.ui-btn {
+  position: fixed; z-index: 30;
+  width: 64px; height: 64px; border-radius: 24px; font-size: 30px;
+  background: #ffffff;
+  box-shadow: 0 5px 0 #d8cbb4, 0 8px 16px rgba(90,70,40,0.18);
+  display: none; align-items: center; justify-content: center;
+  transition: transform 0.12s cubic-bezier(.34,1.56,.64,1);
+}
+.ui-btn:active { transform: scale(0.88) translateY(3px); box-shadow: 0 1px 0 #d8cbb4; }
+.ui-btn.show { display: flex; }
+#btn-home { top: calc(10px + env(safe-area-inset-top)); left: calc(10px + env(safe-area-inset-left)); }
+#btn-profile { top: calc(10px + env(safe-area-inset-top)); left: calc(10px + env(safe-area-inset-left)); font-size: 34px; }
+#btn-book { top: calc(10px + env(safe-area-inset-top)); right: calc(10px + env(safe-area-inset-right)); }
+#btn-voice { top: calc(10px + env(safe-area-inset-top)); right: calc(10px + env(safe-area-inset-right)); }
+#btn-gear { bottom: calc(10px + env(safe-area-inset-bottom)); right: calc(10px + env(safe-area-inset-right));
+  width: 46px; height: 46px; font-size: 20px; border-radius: 16px; opacity: 0.55; }
+
+/* ============ 안내 필 · 토스트 ============ */
+#pill {
+  position: fixed; top: calc(16px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
+  background: #ffffff; color: #ff7b4a;
+  padding: 12px 26px; border-radius: 999px;
+  font-size: clamp(17px, 4vmin, 22px);
+  box-shadow: 0 4px 0 #ecdfc8, 0 8px 18px rgba(60,80,120,0.18); pointer-events: none;
+  white-space: nowrap; max-width: 74vw; overflow: hidden; text-overflow: ellipsis;
+  z-index: 25; display: none; animation: popIn 0.4s cubic-bezier(.34,1.56,.64,1);
+}
+#pill.show { display: block; }
+@keyframes popIn { from { opacity: 0; transform: translateX(-50%) scale(0.5); } }
+.toast {
+  position: fixed; top: calc(84px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
+  background: #ffffff; color: #2a9a5e;
+  padding: 12px 26px; border-radius: 999px; font-size: clamp(15px, 3.6vmin, 19px);
+  z-index: 60; box-shadow: 0 4px 0 #d9e8dd, 0 8px 18px rgba(0,40,80,0.2); pointer-events: none; white-space: nowrap;
+  animation: popIn2 0.35s cubic-bezier(.34,1.56,.64,1), toastOut 0.4s 2.6s forwards;
+}
+@keyframes toastOut { to { opacity: 0; transform: translateX(-50%) translateY(-18px); } }
+@keyframes popIn2 { from { opacity: 0; transform: translateX(-50%) scale(0.4); } }
+
+/* ============ 하단 액션바 ============ */
+#action-bar {
+  position: fixed; bottom: calc(12px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%);
+  display: none; align-items: center; gap: 10px; z-index: 30; flex-wrap: wrap; justify-content: center;
+  max-width: 96vw;
+}
+#action-bar.show { display: flex; }
+.act-btn {
+  min-width: 130px; height: 64px; padding: 0 28px; border-radius: 24px;
+  font-size: clamp(19px, 4.6vmin, 26px); color: #fff;
+  background: linear-gradient(180deg, #ffa072 0%, #ff8a5c 55%, #f57847 100%);
+  box-shadow: 0 6px 0 #d95f33, 0 10px 18px rgba(255,120,60,0.35);
+  text-shadow: 0 2px 2px rgba(160,60,20,0.3);
+  transition: transform 0.12s cubic-bezier(.34,1.56,.64,1);
+}
+.act-btn:active { transform: scale(0.92) translateY(4px); box-shadow: 0 2px 0 #d95f33; }
+.act-btn.blue { background: linear-gradient(180deg, #74c4f2 0%, #56b4ec 55%, #3fa0dc 100%);
+  box-shadow: 0 6px 0 #2a7ab0, 0 10px 18px rgba(60,150,220,0.3); text-shadow: 0 2px 2px rgba(20,80,130,0.3); }
+.act-btn.blue:active { box-shadow: 0 2px 0 #2a7ab0; }
+.act-btn.small { min-width: 0; width: 64px; padding: 0; font-size: 27px; }
+.pick-btn {
+  width: 56px; height: 56px; border-radius: 50%; border: 4px solid #ffffff;
+  box-shadow: 0 4px 0 rgba(120,90,50,0.25), inset 0 -5px 8px rgba(0,0,0,0.14);
+  transition: transform 0.13s cubic-bezier(.34,1.56,.64,1); flex-shrink: 0; font-size: 25px;
+  display: flex; align-items: center; justify-content: center; background: #fff;
+}
+.pick-btn:active { transform: scale(0.86); }
+.pick-btn.sel { outline: 5px solid #ffd21e; transform: scale(1.12); }
+.soul-btn {
+  height: 58px; padding: 0 18px; border-radius: 20px;
+  font-size: clamp(16px, 3.9vmin, 21px); background: #ffffff; color: #4a3f35;
+  box-shadow: 0 4px 0 #d8cbb4, 0 6px 12px rgba(90,70,40,0.14);
+  transition: transform 0.12s cubic-bezier(.34,1.56,.64,1);
+}
+.soul-btn:active { transform: scale(0.92) translateY(3px); box-shadow: 0 1px 0 #d8cbb4; }
+.soul-btn.sel { outline: 5px solid #ffd21e; background: #fff3d6; }
+
+/* ============ 축하 ============ */
+#celebrate {
+  position: fixed; inset: 0; background: rgba(30,50,90,0.4);
+  display: none; align-items: center; justify-content: center; z-index: 70;
+}
+#celebrate.show { display: flex; }
+#celebrate-box {
+  background: #fff8ec; border-radius: 36px; padding: 26px 30px 24px;
+  text-align: center; max-width: min(92vw, 440px);
+  box-shadow: 0 10px 0 #e3d5b8, 0 24px 48px rgba(0,0,0,0.35);
+  animation: popBox 0.45s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes popBox { from { opacity: 0; transform: scale(0.4); } }
+#cel-title { font-size: clamp(25px, 6vmin, 34px); color: #ff7b4a; }
+#cel-stars { font-size: clamp(40px, 10vmin, 58px); letter-spacing: 6px; margin: 6px 0 0; min-height: 1.2em; }
+#cel-stars .star { display: inline-block; opacity: 0; transform: scale(0); }
+#cel-stars .star.on { animation: starPop 0.5s cubic-bezier(.34,1.7,.64,1) forwards; }
+#cel-stars .star.off { opacity: 0.16; transform: scale(1); }
+@keyframes starPop { to { opacity: 1; transform: scale(1); } }
+#cel-canvas { display: none; margin: 8px auto 0; border-radius: 22px; background: #fff;
+  box-shadow: inset 0 0 0 5px #ffe9c8; }
+#cel-msg { font-size: clamp(16px, 3.9vmin, 20px); color: #5a4a38; margin-top: 8px; }
+#cel-btns { display: flex; gap: 12px; justify-content: center; margin-top: 18px; flex-wrap: wrap; }
+
+/* ============ 도감 ============ */
+#book {
+  position: fixed; inset: 0; background: rgba(30,50,90,0.45);
+  display: none; align-items: center; justify-content: center; z-index: 70; padding: 14px;
+}
+#book.show { display: flex; }
+#book-box {
+  background: #fff8ec; border-radius: 32px; padding: 22px;
+  width: min(94vw, 580px); max-height: 88vh; overflow-y: auto; touch-action: pan-y;
+  box-shadow: 0 10px 0 #e3d5b8, 0 24px 48px rgba(0,0,0,0.35); text-align: center;
+  animation: popBox 0.4s cubic-bezier(.34,1.56,.64,1);
+}
+#book-box h2 { font-size: clamp(21px, 5vmin, 28px); color: #ff8a5c; margin-bottom: 2px; }
+#book-sub { font-size: clamp(13px, 3.2vmin, 16px); color: #9a8a70; margin-bottom: 12px; }
+#book-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(106px, 1fr)); gap: 10px; }
+.book-card {
+  background: #fff; border-radius: 20px; padding: 8px 4px 6px;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  box-shadow: inset 0 0 0 3px #ffe9c8, 0 4px 0 #efe2c8;
+  position: relative;
+}
+.fav-btn {
+  position: absolute; top: 4px; right: 4px; z-index: 2;
+  width: 34px; height: 34px; border-radius: 50%; font-size: 18px;
+  background: rgba(255,255,255,0.9); box-shadow: 0 2px 0 #efe2c8;
+}
+.fav-btn:active { transform: scale(0.85); }
+.book-card canvas { border-radius: 12px; }
+.book-name { font-size: 15px; color: #4a3f35; }
+.book-stage { font-size: 11px; color: #9a8a70; }
+#book-empty { font-size: clamp(15px,3.6vmin,18px); color: #9a8a70; padding: 30px 6px; line-height: 1.8; }
+#book-close { margin-top: 16px; }
+
+/* ============ 부모 코너 ============ */
+#parent {
+  position: fixed; inset: 0; background: rgba(30,50,90,0.45);
+  display: none; align-items: center; justify-content: center; z-index: 70; padding: 14px;
+}
+#parent.show { display: flex; }
+#parent-box {
+  background: #fff; border-radius: 28px; padding: 24px;
+  width: min(94vw, 460px); max-height: 90vh; overflow-y: auto; touch-action: pan-y;
+  box-shadow: 0 24px 48px rgba(0,0,0,0.35);
+  animation: popBox 0.35s ease; font-size: 15px; line-height: 1.6;
+  font-family: 'Apple SD Gothic Neo', sans-serif;
+}
+#parent-box h2 { font-size: 20px; color: #2a6a9a; margin-bottom: 10px; font-family: 'Jua', sans-serif; }
+#parent-box h3 { font-size: 15px; color: #4a3f35; margin: 14px 0 6px; }
+.preset-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.preset-btn {
+  flex: 1; min-width: 110px; padding: 10px 4px; border-radius: 14px; font-size: 14px; font-weight: 700;
+  background: #eef4f8; color: #4a6a80; box-shadow: 0 3px 0 #d0dde5;
+}
+.preset-btn.sel { background: #56b4ec; color: #fff; box-shadow: 0 3px 0 #2a7ab0; }
+#parent-stats { background: #f6f9fb; border-radius: 14px; padding: 10px 14px; font-weight: 700; color: #4a6a80; }
+#parent-note { font-size: 12.5px; color: #8a9aa8; margin-top: 12px; }
+#parent-btns { display: flex; gap: 8px; margin-top: 16px; }
+#btn-reset-data { background: #fbe9e9; color: #b05050; box-shadow: 0 3px 0 #e0c0c0; }
+#parent-close-btn { background: #56b4ec; color: #fff; box-shadow: 0 3px 0 #2a7ab0; }
+#parent-btns button { flex: 1; padding: 12px; border-radius: 14px; font-size: 16px; font-weight: 800; }
+
+@media (max-width: 480px) {
+  .ui-btn { width: 54px; height: 54px; font-size: 25px; border-radius: 18px; }
+  #btn-profile { font-size: 29px; }
+  .act-btn { height: 56px; min-width: 110px; }
+  .pick-btn { width: 48px; height: 48px; }
+}
+</style>
+</head>
+<body>
+
+<div id="game-root"></div>
+
+<div id="pill"></div>
+<button class="ui-btn" id="btn-home" aria-label="마을로">🏠</button>
+<button class="ui-btn" id="btn-profile" aria-label="프로필 바꾸기">🐰</button>
+<button class="ui-btn" id="btn-book" aria-label="도감">📔</button>
+<button class="ui-btn" id="btn-voice" aria-label="설명 다시 듣기">📢</button>
+<button class="ui-btn" id="btn-gear" aria-label="부모 코너">⚙️</button>
+<div id="action-bar"></div>
+
+<div id="celebrate">
+  <div id="celebrate-box">
+    <div id="cel-title">우와! 멋져요!</div>
+    <div id="cel-stars"></div>
+    <canvas id="cel-canvas" width="150" height="150"></canvas>
+    <div id="cel-msg"></div>
+    <div id="cel-btns">
+      <button class="act-btn blue" id="cel-again">🔁 또 하기</button>
+      <button class="act-btn" id="cel-home">🏠 마을로</button>
+    </div>
+  </div>
+</div>
+
+<div id="book">
+  <div id="book-box">
+    <h2>📔 우리 마을 친구들</h2>
+    <div id="book-sub"></div>
+    <div id="book-grid"></div>
+    <div id="book-empty" style="display:none">아직 친구가 없어요.<br>🥚 도형 알 섬에서 그림을 그리면<br>친구가 태어나요!</div>
+    <button class="act-btn blue" id="book-close">닫기</button>
+  </div>
+</div>
+
+<div id="parent">
+  <div id="parent-box">
+    <h2>👨‍👩‍👧 부모 코너</h2>
+    <div id="parent-stats"></div>
+    <h3>시작 난이도 (현재 프로필)</h3>
+    <div class="preset-row">
+      <button class="preset-btn" data-preset="1">🌱 새싹 (4~5세)</button>
+      <button class="preset-btn" data-preset="2.5">🌳 나무 (5~6세)</button>
+      <button class="preset-btn" data-preset="4">🌲 숲 (6~7세)</button>
+    </div>
+    <p style="font-size:12.5px;color:#8a9aa8;margin-top:4px">난이도는 아이의 실력에 따라 자동으로 천천히 조절돼요. 여기서는 시작점만 바꿉니다.</p>
+    <h3>소리</h3>
+    <div class="preset-row">
+      <button class="preset-btn" id="parent-sound">🔊 효과음·음성 켜짐</button>
+      <button class="preset-btn" id="parent-bgm">🎵 배경음악 켜짐</button>
+    </div>
+    <div id="parent-note">💡 이 게임은 연필 잡기·종이 그리기 같은 실물 놀이를 대신하지 않아요. 함께 해 주세요.<br>
+    별은 아무것도 잠그지 않으며, 캐릭터는 돌보지 않아도 절대 슬퍼하거나 사라지지 않습니다.<br>
+    글꼴: Jua (SIL Open Font License)</div>
+    <div id="parent-btns">
+      <button id="btn-reset-data">데이터 초기화</button>
+      <button id="parent-close-btn">닫기</button>
+    </div>
+  </div>
+</div>
+
+<script src="vendor/phaser.min.js"></script>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
