@@ -194,6 +194,21 @@ button { font-family: inherit; cursor: pointer; border: none; }
   .act-btn { height: 56px; min-width: 110px; }
   .pick-btn { width: 48px; height: 48px; }
 }
+
+/* 가로 모드(낮은 높이): 버튼·바를 줄여 놀이 영역을 지킨다 —
+   줄바꿈된 액션바가 화면 절반을 덮는 문제 방지 */
+@media (max-height: 520px) {
+  .ui-btn { width: 48px; height: 48px; font-size: 22px; border-radius: 16px; }
+  #btn-profile { font-size: 26px; }
+  #pill { padding: 8px 18px; font-size: clamp(14px, 3.4vmin, 18px); }
+  #action-bar { gap: 6px; bottom: calc(8px + env(safe-area-inset-bottom)); max-width: 98vw; }
+  .act-btn { height: 48px; min-width: 100px; padding: 0 16px;
+    font-size: clamp(16px, 4vmin, 20px); border-radius: 18px; }
+  .act-btn.small { width: 48px; min-width: 0; font-size: 21px; }
+  .pick-btn { width: 42px; height: 42px; border-width: 3px; font-size: 19px; }
+  .pick-btn.sel { outline-width: 4px; }
+  .soul-btn { height: 44px; padding: 0 12px; font-size: clamp(13px, 3.4vmin, 16px); }
+}
 </style>
 </head>
 <body>

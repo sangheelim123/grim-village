@@ -9,6 +9,7 @@ import { DECOR_UNLOCKS, rand, pick, clamp } from '../config.js';
 const ISLANDS = [
   { key: 'Road', sign: 'sign_road', name: '길 그리기', nx: 0.14, ny: 0.36 },
   { key: 'Egg', sign: 'sign_egg', name: '도형 알', nx: 0.86, ny: 0.36 },
+  { key: 'Aqua', sign: 'sign_aqua', name: '수족관', nx: 0.5, ny: 0.33 },
   { key: 'Feed', sign: 'sign_feed', name: '냠냠', nx: 0.14, ny: 0.75 },
   { key: 'Sort', sign: 'sign_sort', name: '반짝', nx: 0.86, ny: 0.75 },
 ];

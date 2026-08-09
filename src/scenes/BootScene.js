@@ -10,6 +10,7 @@ const IMGS = [
   ['flower1', 72, 96], ['flower2', 72, 96], ['flower3', 68, 92],
   ['rainbow', 560, 294], ['fountain', 208, 195], ['grass', 90, 54],
   ['sign_road', 240, 240], ['sign_egg', 240, 240], ['sign_feed', 254, 268], ['sign_sort', 240, 254],
+  ['sign_aqua', 240, 240],
   ['easel', 210, 238], ['nest', 420, 182], ['egg_big', 338, 416],
   ['flag', 117, 156], ['house', 266, 252], ['plate', 468, 143],
   ['basket', 260, 208], ['tree', 546, 624],
