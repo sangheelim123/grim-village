@@ -3,7 +3,7 @@
 import { audio } from './audio.js';
 import { store } from './store.js';
 import { drawCreature2D, drawCreatureReplay } from './creature.js';
-import { PRAISES, PERSONALITIES, pick } from './config.js';
+import { PRAISES, PERSONALITIES, pickVary, eunNeun } from './config.js';
 
 const $ = id => document.getElementById(id);
 
@@ -42,7 +42,7 @@ export const ui = {
   _celState: null,
   celebrate(opts) {
     this._celState = opts;
-    $('cel-title').textContent = pick(PRAISES);
+    $('cel-title').textContent = pickVary(PRAISES);
     const starsEl = $('cel-stars');
     starsEl.innerHTML = '';
     if (opts.stars != null) {
@@ -98,7 +98,7 @@ export const ui = {
         store.save();
         favBtn.textContent = char.fav ? '💛' : '🤍';
         audio.pop(3);
-        if (char.fav) audio.speak(`${char.n}는 이제 짝꿍이에요!`, { pri: 1 });
+        if (char.fav) audio.speak(`${eunNeun(char.n)} 이제 짝꿍이에요!`, { pri: 1 });
       });
       card.appendChild(favBtn);
       const cv = document.createElement('canvas');

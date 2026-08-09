@@ -7,9 +7,44 @@ import { creatureSize } from './store.js';
    공유한다 (마을의 아이와 도감의 아이는 반드시 같은 모습이어야 한다)
    ========================================================================== */
 
+/* 무늬용 미니 도형 (몸통 클리핑 안에서만 그려진다) */
+function heartAt(c, x, y, s) {
+  c.beginPath();
+  c.moveTo(x, y + s * 0.9);
+  c.bezierCurveTo(x - s * 1.15, y, x - s * 0.6, y - s * 0.85, x, y - s * 0.25);
+  c.bezierCurveTo(x + s * 0.6, y - s * 0.85, x + s * 1.15, y, x, y + s * 0.9);
+  c.fill();
+}
+function starAt(c, x, y, r) {
+  c.beginPath();
+  for (let k = 0; k < 5; k++) {
+    const a = -Math.PI / 2 + k * (Math.PI * 4 / 5);
+    const px = x + r * Math.cos(a), py = y + r * Math.sin(a);
+    if (k === 0) c.moveTo(px, py); else c.lineTo(px, py);
+  }
+  c.closePath();
+  c.fill();
+}
+
+/* 닫았을 때 면적이 거의 없는 획(직선·십자 등)은 몸통 채우기가 보이지 않는다 */
+function strokeArea(st) {
+  let a = 0;
+  for (let i = 0; i < st.length; i++) {
+    const p = st[i], q = st[(i + 1) % st.length];
+    a += p[0] * q[1] - q[0] * p[1];
+  }
+  return Math.abs(a) / 2;
+}
+
 function buildBodyPath(c, char) {
   const body = char.s[0];
-  if (!body || body.length < 3) return false;
+  // 선만 있는 그림(십자·엑스·막대 그림)은 뒤에 동그란 풍선 몸통을 깔아
+  // 색·무늬 선택이 항상 눈에 보이게 한다 — 아이의 선은 그 위에 그대로 남는다
+  if (!body || body.length < 3 || strokeArea(body) < 700) {
+    c.beginPath();
+    c.arc(50, 52, 43, 0, Math.PI * 2);
+    return 'blob';
+  }
   c.beginPath();
   c.moveTo(body[0][0], body[0][1]);
   for (let i = 1; i < body.length; i++) c.lineTo(body[i][0], body[i][1]);
@@ -43,12 +78,24 @@ export function paintBody(c, char) {
         for (let y = 58; y <= 94; y += 14) {
           c.beginPath(); c.moveTo(-5, y); c.lineTo(105, y + 6); c.stroke();
         }
+      } else if (char.pt === 4) { // 하트무늬
+        c.fillStyle = 'rgba(255,255,255,0.7)';
+        [[35, 62], [58, 70], [48, 50], [66, 46]].forEach(p => heartAt(c, p[0], p[1], 5));
+      } else if (char.pt === 5) { // 별무늬
+        c.fillStyle = 'rgba(255,255,255,0.7)';
+        [[36, 60], [60, 68], [50, 48], [68, 46]].forEach(p => starAt(c, p[0], p[1], 6));
       }
       c.restore();
     }
   }
   c.lineWidth = 7; c.lineCap = 'round'; c.lineJoin = 'round';
   c.strokeStyle = CHAR_DARK[char.c % CHAR_DARK.length];
+  if (hasBody === 'blob') { // 풍선 몸통 테두리
+    c.save();
+    c.lineWidth = 5;
+    c.beginPath(); c.arc(50, 52, 43, 0, Math.PI * 2); c.stroke();
+    c.restore();
+  }
   const body = char.s[0];
   for (const st of char.s) {
     if (st.length < 2) continue;
@@ -75,6 +122,9 @@ export function paintEyes(c, char) {
     } else if (char.e === 2) {
       c.lineWidth = 3; c.strokeStyle = '#333';
       c.beginPath(); c.arc(ex, ey + 1, 5.5, Math.PI * 0.15, Math.PI * 0.85); c.stroke();
+    } else if (char.e === 3) { // 방긋 (^ ^)
+      c.lineWidth = 3; c.strokeStyle = '#333';
+      c.beginPath(); c.arc(ex, ey + 4, 5.5, Math.PI * 1.15, Math.PI * 1.85); c.stroke();
     } else {
       c.beginPath(); c.arc(ex, ey + 1, 5, 0, 6.3); c.fill();
     }
@@ -153,6 +203,11 @@ export function bakeEyeTextures(scene) {
     c.strokeStyle = '#333'; c.lineWidth = 6; c.lineCap = 'round';
     c.beginPath(); c.arc(24, 22, 11, Math.PI * 0.15, Math.PI * 0.85); c.stroke();
   });
+  mk('eye3', c => { // 방긋 (^ ^)
+    c.fillStyle = '#fff'; c.beginPath(); c.arc(24, 24, 20, 0, 6.3); c.fill();
+    c.strokeStyle = '#333'; c.lineWidth = 6; c.lineCap = 'round';
+    c.beginPath(); c.arc(24, 31, 11, Math.PI * 1.15, Math.PI * 1.85); c.stroke();
+  });
 }
 
 /* ---------- 살아있는 캐릭터 컨테이너 ---------- */
@@ -163,7 +218,7 @@ export function makeCreatureSprite(scene, char, size) {
     .setDisplaySize(sz * 0.85, sz * 0.25).setTint(0x000000).setAlpha(0.16);
   const bodyKey = bakeCreatureTexture(scene, char);
   const body = scene.add.image(0, 0, bodyKey).setDisplaySize(sz, sz);
-  const eyeKey = `eye${(char.e || 0) % 3}`;
+  const eyeKey = `eye${(char.e || 0) % 4}`;
   const eyeScale = (sz / 256) * 0.75;
   const eyeL = scene.add.image(-sz * 0.14, -sz * 0.14, eyeKey).setScale(eyeScale);
   const eyeR = scene.add.image(sz * 0.14, -sz * 0.14, eyeKey).setScale(eyeScale);

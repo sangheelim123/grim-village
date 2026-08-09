@@ -1,10 +1,10 @@
 import { addSky, sparkleBurst, confettiBurst, textStyle, pressify } from './common.js';
-import { Tracer, accToStars } from '../tracer.js';
+import { Tracer, MultiTracer, tracerParts, resamplePath, accToStars } from '../tracer.js';
 import { store, newCreature, normalizeStrokes, nameCandidates } from '../store.js';
 import { makeCreatureSprite } from '../creature.js';
 import { audio } from '../audio.js';
 import { ui } from '../dom-ui.js';
-import { TUNING, CHAR_COLORS, PERSONALITIES, eulRl, rand, pick, clamp } from '../config.js';
+import { TUNING, CHAR_COLORS, PERSONALITIES, TRACE_PRAISE, MID_CHEER, eulRl, iGa, pickVary, rand, pick, clamp } from '../config.js';
 
 /* 바운딩 박스를 0.08~0.92 상자에 맞춘다 (도형 생성 헬퍼) */
 function normPts(pts) {
@@ -89,14 +89,53 @@ const SHAPES = {
     }
     return pts;
   } },
+  /* 다획 도형 — gen()이 획 배열을 돌려준다 (multi: true). 획 순서·방향 자유 */
+  cross: { name: '십자', voice: '반듯반듯 십자', multi: true, gen: () => [
+    [{ x: 0.5, y: 0.08 }, { x: 0.5, y: 0.92 }],
+    [{ x: 0.08, y: 0.5 }, { x: 0.92, y: 0.5 }],
+  ] },
+  x: { name: '엑스', voice: '쓱싹쓱싹 엑스', multi: true, gen: () => [
+    [{ x: 0.14, y: 0.12 }, { x: 0.86, y: 0.88 }],
+    [{ x: 0.86, y: 0.12 }, { x: 0.14, y: 0.88 }],
+  ] },
+  house: { name: '집', voice: '뾰족 지붕 집', multi: true, gen: () => [
+    [[0.16, 0.48], [0.84, 0.48], [0.84, 0.94], [0.16, 0.94], [0.16, 0.48]].map(p => ({ x: p[0], y: p[1] })),
+    [[0.16, 0.48], [0.5, 0.08], [0.84, 0.48]].map(p => ({ x: p[0], y: p[1] })),
+  ] },
+  moon: { name: '초승달', voice: '스르르 초승달', gen: () => {
+    const pts = [];
+    for (let i = 0; i <= 50; i++) { // 바깥 호: 아래 뿔(65°) → 왼쪽 → 위 뿔(295°)
+      const a = (65 + (i / 50) * 230) * Math.PI / 180;
+      pts.push({ x: 0.5 + 0.44 * Math.cos(a), y: 0.5 + 0.44 * Math.sin(a) });
+    }
+    const A = pts[pts.length - 1], B = pts[0];
+    for (let i = 1; i <= 24; i++) { // 안쪽 파인 곡선: 위 뿔 → 아래 뿔
+      const t = i / 24;
+      pts.push({
+        x: (1 - t) * (1 - t) * A.x + 2 * (1 - t) * t * 0.22 + t * t * B.x,
+        y: (1 - t) * (1 - t) * A.y + 2 * (1 - t) * t * 0.5 + t * t * B.y,
+      });
+    }
+    return normPts(pts);
+  } },
+  flower: { name: '꽃', voice: '활짝활짝 꽃', gen: () => {
+    const pts = [];
+    for (let i = 0; i <= 120; i++) { // 꽃잎 6장: 바깥으로만 볼록한 스캘럽 (데이지 꽃머리)
+      const a = -Math.PI / 2 + (i / 120) * Math.PI * 2;
+      const r = 0.3 + 0.12 * Math.abs(Math.sin(a * 3));
+      pts.push({ x: 0.5 + r * Math.cos(a), y: 0.5 + r * Math.sin(a) });
+    }
+    return pts;
+  } },
 };
-/* 레벨별 후보 풀 — 발달 순서 유지, 최종 선택은 아이가 한다 */
+/* 레벨별 후보 풀 — 그리기 발달 순서(원3세→십자4세→네모4.5세→엑스5세→세모5.5세→마름모6~7세)를
+   따르되, 최종 선택은 아이가 한다. 다획 도형(십자·엑스)은 가이드 레벨(1~3)에서 획마다 점선을 준다 */
 const POOLS = [
-  ['circle', 'oval', 'tri'],
-  ['circle', 'oval', 'tri', 'square', 'drop'],
-  ['circle', 'oval', 'tri', 'square', 'drop', 'heart', 'diamond'],
-  ['oval', 'square', 'drop', 'heart', 'diamond', 'semi', 'star'],
-  ['drop', 'heart', 'diamond', 'semi', 'star', 'circle', 'tri'],
+  ['circle', 'oval', 'square'],
+  ['circle', 'oval', 'square', 'cross', 'tri', 'drop'],
+  ['square', 'cross', 'tri', 'drop', 'x', 'heart', 'moon'],
+  ['tri', 'drop', 'x', 'heart', 'moon', 'diamond', 'flower', 'semi'],
+  ['heart', 'moon', 'diamond', 'flower', 'semi', 'star', 'house'],
 ];
 
 export class EggScene extends Phaser.Scene {
@@ -171,14 +210,16 @@ export class EggScene extends Phaser.Scene {
       const cont = this.add.container(0, 0).setDepth(20);
       const panel = this.add.image(0, 0, 'panel').setDisplaySize(180, 210);
       const g = this.add.graphics();
-      const pts = shape.gen();
+      const strokes = shape.multi ? shape.gen() : [shape.gen()];
       g.lineStyle(7, 0xff6b9a, 1);
-      g.beginPath();
-      pts.forEach((p, i) => {
-        const x = (p.x - 0.5) * 120, y = (p.y - 0.5) * 120 - 14;
-        if (i === 0) g.moveTo(x, y); else g.lineTo(x, y);
-      });
-      g.strokePath();
+      for (const pts of strokes) {
+        g.beginPath();
+        pts.forEach((p, i) => {
+          const x = (p.x - 0.5) * 120, y = (p.y - 0.5) * 120 - 14;
+          if (i === 0) g.moveTo(x, y); else g.lineTo(x, y);
+        });
+        g.strokePath();
+      }
       const label = this.add.text(0, 74, shape.name, textStyle(23)).setOrigin(0.5);
       cont.add([panel, g, label]);
       cont.setSize(180, 210);
@@ -202,6 +243,15 @@ export class EggScene extends Phaser.Scene {
   }
 
   /* ---------- 2단계: 그리기 ---------- */
+  makeTracer() {
+    const { width: w, height: h } = this.scale;
+    const g = this.shape.gen();
+    const raw = this.shape.multi ? g : [g];
+    // 획 하나면 기존 Tracer 그대로 (방향·시작점 자유), 여러 획이면 MultiTracer
+    return raw.length > 1
+      ? new MultiTracer(raw, { w: 1, h: 1 }, this.lvl, true, w, h)
+      : new Tracer(raw[0], { w: 1, h: 1 }, this.lvl, true, w, h);
+  }
   startTrace(key) {
     for (const c of this.pickCards) c.destroy();
     this.pickCards = [];
@@ -210,22 +260,45 @@ export class EggScene extends Phaser.Scene {
     this.strokes = [];
     this.stroke = null;
     this.mile = 0;
-    const { width: w, height: h } = this.scale;
+    this.halfCheered = false;
+    // 기억 그리기(레벨 5 견본 모드): 견본을 잠깐 보여 주고 살짝 숨긴다 — 언제든 다시 볼 수 있다
+    this.memoryMode = !this.guided && this.lvl >= 5;
+    this.sampleHidden = false;
     if (this.guided) {
-      // 닫힌 도형 — 방향·시작점 자유
-      this.tracer = new Tracer(this.shape.gen(), { w: 1, h: 1 }, this.lvl, true, w, h);
+      this.tracer = this.makeTracer();
       this.sampleTracer = null;
     } else {
       this.tracer = null;
-      this.sampleTracer = new Tracer(this.shape.gen(), { w: 1, h: 1 }, this.lvl, false, w, h);
+      this.sampleTracer = this.makeTracer();
+      if (this.memoryMode) {
+        this.time.delayedCall(TUNING.memoryShowMs, () => this.hideSample());
+      }
     }
     audio.pop(3);
     ui.setPill(`${eulRl(this.shape.name)} 그려 봐요!`);
     audio.speak(this.guided
       ? `${this.shape.voice}! 점선을 따라 알 위에 그려 주세요!`
-      : `${this.shape.voice}! 견본을 보고 알 위에 그려 주세요!`);
+      : this.memoryMode
+        ? `${this.shape.voice}! 견본을 잘 기억해 두세요! 조금 있다가 숨을 거예요!`
+        : `${this.shape.voice}! 견본을 보고 알 위에 그려 주세요!`);
     this.showDoneBtn();
     this.layout();
+  }
+
+  /* 기억 그리기: 견본 숨기기 / 살짝 보기 */
+  hideSample() {
+    if (this.state !== 'trace' || !this.memoryMode || this.sampleHidden) return;
+    this.sampleHidden = true;
+    this.layout();
+    audio.pop(2);
+    audio.speak('이제 기억해서 그려 봐요! 궁금하면 눈 버튼을 눌러요!', { pri: 1 });
+  }
+  peekSample() {
+    if (this.state !== 'trace' || !this.memoryMode || !this.sampleHidden) return;
+    this.sampleHidden = false;
+    this.layout();
+    audio.pop(3);
+    this.time.delayedCall(TUNING.memoryPeekMs, () => this.hideSample());
   }
 
   layout() {
@@ -238,24 +311,33 @@ export class EggScene extends Phaser.Scene {
     if (this.sampleTracer && this.state === 'trace') {
       this.sampleTracer.fit(w, h);
       const ss = m * 0.19;
-      this.samplePanel.setVisible(true).setPosition(ss * 0.62 + 18, ss * 0.62 + 84).setDisplaySize(ss + 44, ss + 44);
       this.sampleG.clear();
-      this.sampleG.lineStyle(5, 0xff9fb8, 1);
-      const st = this.sampleTracer;
-      this.sampleG.beginPath();
-      st.samples.forEach((p, i) => {
-        const x = 18 + 8 + (p.x / st.aspect.w) * ss;
-        const y = 84 + 8 + (p.y / st.aspect.h) * ss;
-        if (i === 0) this.sampleG.moveTo(x, y); else this.sampleG.lineTo(x, y);
-      });
-      this.sampleG.strokePath();
+      if (this.sampleHidden) {
+        this.samplePanel.setVisible(false);
+      } else {
+        this.samplePanel.setVisible(true).setPosition(ss * 0.62 + 18, ss * 0.62 + 84).setDisplaySize(ss + 44, ss + 44);
+        this.sampleG.lineStyle(5, 0xff9fb8, 1);
+        for (const part of tracerParts(this.sampleTracer)) {
+          this.sampleG.beginPath();
+          part.samples.forEach((p, i) => {
+            const x = 18 + 8 + (p.x / part.aspect.w) * ss;
+            const y = 84 + 8 + (p.y / part.aspect.h) * ss;
+            if (i === 0) this.sampleG.moveTo(x, y); else this.sampleG.lineTo(x, y);
+          });
+          this.sampleG.strokePath();
+        }
+      }
     }
     if (this.state === 'pick') this.layoutPick();
     this.redrawStrokes();
   }
 
   showDoneBtn() {
-    ui.setActionBar('<button class="act-btn" id="egg-done">✅ 다 그렸어요!</button>');
+    const peek = this.memoryMode ? '<button class="act-btn small blue" id="egg-peek">👀</button>' : '';
+    ui.setActionBar(`<button class="act-btn small blue" id="egg-undo">↩️</button>${peek}
+      <button class="act-btn" id="egg-done">✅ 다 그렸어요!</button>`);
+    document.getElementById('egg-undo').addEventListener('click', () => this.undoStroke());
+    if (this.memoryMode) document.getElementById('egg-peek').addEventListener('click', () => this.peekSample());
     document.getElementById('egg-done').addEventListener('click', () => {
       const drawn = this.strokes.length > 0 || (this.stroke && this.stroke.length > 1);
       if (!drawn) { ui.guide('알 위에 그려 주세요!'); return; }
@@ -263,23 +345,60 @@ export class EggScene extends Phaser.Scene {
     });
   }
 
+  /* 마지막 획 되돌리기 — 실수해도 처음부터 다시 그릴 필요가 없다.
+     판정은 남은 획을 새 트레이서에 다시 먹여 정직하게 재계산한다. */
+  undoStroke() {
+    if (this.state !== 'trace') return;
+    if (this.stroke) { this.stroke = null; this.drawId = null; }
+    else if (this.strokes.length) this.strokes.pop();
+    else { audio.boing(); return; }
+    if (this.tracer) {
+      this.tracer = this.makeTracer();
+      for (const st of this.strokes) {
+        this.tracer.feed(st[0][0], st[0][1]);
+        for (let i = 1; i < st.length; i++) this.tracer.feedSegment(st[i - 1][0], st[i - 1][1], st[i][0], st[i][1]);
+      }
+      const step = Math.ceil(this.tracer.n / 8);
+      this.mile = Math.floor(this.tracer.coveredCount / step);
+      this.halfCheered = this.tracer.coverage >= 0.5;
+    }
+    this.redrawStrokes();
+    audio.whoosh();
+  }
+
+  brushW() { return Math.max(6, Math.min(this.scale.width, this.scale.height) * 0.015); }
+
   onDown(p) {
     if (this.state !== 'trace' || this.stroke) return; // 이미 그리는 중이면 다른 손가락 무시
     this.drawId = p.id;
     this.stroke = [[p.x, p.y]];
+    this.strokeG.fillStyle(0xe06a9a, 1);
+    this.strokeG.fillCircle(p.x, p.y, this.brushW() / 2);
     if (this.tracer) this.tracer.feed(p.x, p.y);
   }
   onMove(p) {
     if (this.state !== 'trace' || !this.stroke || p.id !== this.drawId) return;
     const prev = this.stroke[this.stroke.length - 1];
     this.stroke.push([p.x, p.y]);
-    this.strokeG.lineStyle(Math.max(6, Math.min(this.scale.width, this.scale.height) * 0.015), 0xe06a9a, 1);
+    const bw = this.brushW();
+    this.strokeG.lineStyle(bw, 0xe06a9a, 1);
     this.strokeG.lineBetween(prev[0], prev[1], p.x, p.y);
+    // 꺾이는 자리마다 동그란 마디를 채워 두꺼운 선의 각짐을 없앤다
+    this.strokeG.fillStyle(0xe06a9a, 1);
+    this.strokeG.fillCircle(p.x, p.y, bw / 2);
     if (this.tracer) {
       this.tracer.feedSegment(prev[0], prev[1], p.x, p.y); // 빠른 스와이프 보간
       const step = Math.ceil(this.tracer.n / 8);
       const mile = Math.floor(this.tracer.coveredCount / step);
-      if (mile > this.mile) { this.mile = mile; audio.pop(mile); }
+      if (mile > this.mile) {
+        this.mile = mile;
+        audio.pop(mile);
+        sparkleBurst(this, p.x, p.y, 4); // 손끝에서 반짝 — 진행이 눈에 보인다
+      }
+      if (!this.halfCheered && this.tracer.coverage >= 0.5) {
+        this.halfCheered = true;
+        audio.speak(pickVary(MID_CHEER), { pri: 2 }); // 다른 소리 중이면 조용히 스킵
+      }
       // 드래그 중에는 절대 완료를 선언하지 않는다 — 아이의 손이 먼저다
     }
   }
@@ -301,9 +420,15 @@ export class EggScene extends Phaser.Scene {
   redrawStrokes() {
     this.strokeG.clear();
     if (this.state !== 'trace') return;
-    this.strokeG.lineStyle(Math.max(6, Math.min(this.scale.width, this.scale.height) * 0.015), 0xe06a9a, 1);
+    const bw = this.brushW();
+    this.strokeG.lineStyle(bw, 0xe06a9a, 1);
+    this.strokeG.fillStyle(0xe06a9a, 1);
     for (const st of this.strokes) {
-      for (let i = 1; i < st.length; i++) this.strokeG.lineBetween(st[i - 1][0], st[i - 1][1], st[i][0], st[i][1]);
+      this.strokeG.fillCircle(st[0][0], st[0][1], bw / 2);
+      for (let i = 1; i < st.length; i++) {
+        this.strokeG.lineBetween(st[i - 1][0], st[i - 1][1], st[i][0], st[i][1]);
+        this.strokeG.fillCircle(st[i][0], st[i][1], bw / 2);
+      }
     }
   }
 
@@ -311,24 +436,66 @@ export class EggScene extends Phaser.Scene {
     if (this.stroke && this.stroke.length > 1) this.strokes.push(this.stroke);
     this.stroke = null;
     if (this.tracer) this.acc = this.tracer.accuracy;
-    else this.acc = this.freehandAcc();
+    else this.acc = this.shape.multi ? this.sampleFitAcc() : this.freehandAcc();
     // 점만 찍었으면 가이드 도형을 몸통으로 (유령 캐릭터 방지)
     const totalPts = this.strokes.reduce((s, st) => s + st.length, 0);
     if (totalPts < 6) {
       const src = this.tracer || this.sampleTracer;
       if (src) {
-        const shapeStroke = [];
-        for (let i = 0; i < src.n; i += 2) {
-          const p = src.sp(i);
-          shapeStroke.push([p.x, p.y]);
+        for (const part of tracerParts(src)) {
+          const shapeStroke = [];
+          for (let i = 0; i < part.n; i += 2) {
+            const p = part.sp(i);
+            shapeStroke.push([p.x, p.y]);
+          }
+          this.strokes.push(shapeStroke);
         }
-        this.strokes.push(shapeStroke);
       }
     }
     audio.success();
     this.enterDecorate(Math.floor(rand(0, CHAR_COLORS.length)));
+    // 정확도에 따라 표현만 다른 칭찬 — 낮아도 "끝까지 해냈다"를 칭찬한다 (실패 없음)
+    const pool = this.acc == null ? TRACE_PRAISE.mid
+      : this.acc >= TUNING.starAcc[1] ? TRACE_PRAISE.hi
+        : this.acc >= TUNING.starAcc[0] ? TRACE_PRAISE.mid : TRACE_PRAISE.low;
     // 효과음과 겹치지 않게 살짝 늦게 발화
-    setTimeout(() => audio.speak('멋진 ' + this.shape.name + '! 색과 눈과 무늬를 골라 주세요!', { pri: 1 }), 350);
+    setTimeout(() => audio.speak(`멋진 ${this.shape.name}! ${pickVary(pool)} 이제 색과 눈과 무늬를 골라요!`, { pri: 1 }), 350);
+  }
+
+  /* 견본 모드의 다획 도형(엑스·집): 시작-끝 닫힘 휴리스틱은 열린 획을 부당하게
+     벌점 주므로, 모델을 아이 그림의 바운딩 박스에 얹어 '닮음'만 관대하게 본다 */
+  sampleFitAcc() {
+    const all = this.strokes.flat();
+    if (all.length < 6) return 0.5;
+    let minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
+    for (const p of all) {
+      minX = Math.min(minX, p[0]); minY = Math.min(minY, p[1]);
+      maxX = Math.max(maxX, p[0]); maxY = Math.max(maxY, p[1]);
+    }
+    const bw = Math.max(8, maxX - minX), bh = Math.max(8, maxY - minY);
+    const R = Math.max(bw, bh) * 0.18;
+    const raw = this.shape.multi ? this.shape.gen() : [this.shape.gen()];
+    let mnX = 1e9, mnY = 1e9, mxX = -1e9, mxY = -1e9;
+    for (const st of raw) for (const p of st) {
+      mnX = Math.min(mnX, p.x); mnY = Math.min(mnY, p.y);
+      mxX = Math.max(mxX, p.x); mxY = Math.max(mxY, p.y);
+    }
+    const mw = mxX - mnX || 1, mh = mxY - mnY || 1;
+    let hit = 0, total = 0;
+    for (const st of raw) {
+      for (const mp of resamplePath(st, 24)) {
+        const x = minX + (mp.x - mnX) / mw * bw;
+        const y = minY + (mp.y - mnY) / mh * bh;
+        total++;
+        let best = Infinity;
+        for (const p of all) {
+          const d = Math.hypot(p[0] - x, p[1] - y);
+          if (d < best) best = d;
+        }
+        if (best <= R) hit++;
+      }
+    }
+    return clamp(0.4 + 0.6 * (hit / total), 0.4, 1);
   }
 
   freehandAcc() {
@@ -377,9 +544,9 @@ export class EggScene extends Phaser.Scene {
   showLookBar() {
     const colors = CHAR_COLORS.map((col, i) =>
       `<button class="pick-btn dc-c ${i === this.decorSel.c ? 'sel' : ''}" data-i="${i}" style="background:${col}"></button>`).join('');
-    const eyes = ['🙂', '🤩', '😌'].map((e, i) =>
+    const eyes = ['🙂', '🤩', '😌', '😄'].map((e, i) =>
       `<button class="pick-btn dc-e ${i === this.decorSel.e ? 'sel' : ''}" data-i="${i}">${e}</button>`).join('');
-    const pats = ['—', '점', '볼', '줄'].map((t, i) =>
+    const pats = ['—', '점', '볼', '줄', '♥', '★'].map((t, i) =>
       `<button class="pick-btn dc-p ${i === this.decorSel.pt ? 'sel' : ''}" data-i="${i}">${t}</button>`).join('');
     ui.setActionBar(`${colors}<span style="width:8px"></span>${eyes}<span style="width:8px"></span>${pats}
       <button class="act-btn" id="egg-next">다음 ➡</button>`);
@@ -444,9 +611,48 @@ export class EggScene extends Phaser.Scene {
       store.adapt('egg', this.acc);
     }
     store.flush();
-    audio.hatch();
 
     if (this.previewObj) this.previewObj.setVisible(false);
+    // 탄생 리플레이: 아이가 그린 순서 그대로 금빛 선이 되살아난다 —
+    // "이 친구는 네 손에서 나왔다"를 말없이 보여 주는 1초
+    const total = this.strokes.reduce((s, st) => s + st.length, 0);
+    const rg = this.add.graphics().setDepth(20);
+    const prog = { t: 0 };
+    audio.whoosh();
+    this.tweens.add({
+      targets: prog, t: 1, duration: 1100, ease: 'Sine.easeInOut',
+      onUpdate: () => {
+        const upto = Math.max(1, Math.floor(total * prog.t));
+        rg.clear();
+        rg.lineStyle(7, 0xffd76a, 0.95);
+        rg.fillStyle(0xffd76a, 0.95);
+        let n = 0, head = null;
+        for (const st of this.strokes) {
+          if (n >= upto) break;
+          rg.fillCircle(st[0][0], st[0][1], 3.5);
+          head = st[0];
+          for (let i = 1; i < st.length && n + i < upto; i++) {
+            rg.lineBetween(st[i - 1][0], st[i - 1][1], st[i][0], st[i][1]);
+            rg.fillCircle(st[i][0], st[i][1], 3.5);
+            head = st[i];
+          }
+          n += st.length;
+        }
+        if (head) { // 선두의 빛 방울
+          rg.fillStyle(0xfff2b0, 0.9);
+          rg.fillCircle(head[0], head[1], 10);
+        }
+      },
+      onComplete: () => {
+        sparkleBurst(this, this.eggImg.x, this.eggImg.y, 10);
+        this.tweens.add({ targets: rg, alpha: 0, duration: 450, onComplete: () => rg.destroy() });
+        audio.hatch();
+        this.startHatchShake();
+      },
+    });
+  }
+
+  startHatchShake() {
     this.tweens.add({
       targets: this.eggImg, angle: { from: -5, to: 5 }, duration: 90, yoyo: true, repeat: 7,
       onComplete: () => {
@@ -466,8 +672,8 @@ export class EggScene extends Phaser.Scene {
               ui.celebrate({
                 stars: this.pendingStars,
                 char: this.newChar,
-                msg: `${p.emoji} ${p.name} ${this.newChar.n}가 태어났어요! 마을에서 만나요!`,
-                speakMsg: `${p.name} ${this.newChar.n}가 태어났어요!`,
+                msg: `${p.emoji} ${p.name} ${iGa(this.newChar.n)} 태어났어요! 마을에서 만나요!`,
+                speakMsg: `${p.name} ${iGa(this.newChar.n)} 태어났어요!`,
                 onAgain: () => this.scene.restart({}),
               });
             });
@@ -487,20 +693,24 @@ export class EggScene extends Phaser.Scene {
     g.clear();
     const dotR = clamp(tr.R * 0.2, 5, 10);
     const gap = Math.max(1, Math.round(tr.n / 46));
-    for (let i = 0; i < tr.n; i += gap) {
-      const p = tr.sp(i);
-      if (tr.covered[i]) {
-        g.fillStyle(0xff6b9a, 1);
-        g.fillCircle(p.x, p.y, dotR * 1.2);
-      } else {
-        g.fillStyle(0xffffff, 0.95);
-        g.fillCircle(p.x, p.y, dotR);
-        g.lineStyle(2, 0x000000, 0.13);
-        g.strokeCircle(p.x, p.y, dotR);
+    for (const part of tracerParts(tr)) {
+      for (let i = 0; i < part.n; i += gap) {
+        const p = part.sp(i);
+        if (part.covered[i]) {
+          g.fillStyle(0xff6b9a, 1);
+          g.fillCircle(p.x, p.y, dotR * 1.2);
+        } else {
+          g.fillStyle(0xffffff, 0.95);
+          g.fillCircle(p.x, p.y, dotR);
+          g.lineStyle(2, 0x000000, 0.13);
+          g.strokeCircle(p.x, p.y, dotR);
+        }
       }
     }
-    const pulseIdx = tr.firstUncovered();
-    const startP = tr.sp(pulseIdx);
+    // 펄스·힌트는 아직 덜 채운 첫 획 기준
+    const act = tr.activePart || tr;
+    const pulseIdx = act.firstUncovered();
+    const startP = act.sp(pulseIdx);
     const pulse = 1 + Math.sin(now * 0.006) * 0.18;
     g.fillStyle(0x3cc864, 0.92);
     g.fillCircle(startP.x, startP.y, tr.R * 0.5 * pulse);
@@ -509,8 +719,8 @@ export class EggScene extends Phaser.Scene {
     if (now - tr.lastProgress > 5000) {
       const t = ((now - tr.lastProgress - 5000) % 2000) / 2000;
       const from = pulseIdx;
-      const to = Math.min(tr.n - 1, from + Math.floor(tr.n * 0.22));
-      const hp = tr.sp(Math.round(from + (to - from) * t));
+      const to = Math.min(act.n - 1, from + Math.floor(act.n * 0.22));
+      const hp = act.sp(Math.round(from + (to - from) * t));
       this.hintHand.setAlpha(0.9).setPosition(hp.x + 10, hp.y + tr.R);
     } else this.hintHand.setAlpha(0);
   }

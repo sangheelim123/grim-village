@@ -5,34 +5,47 @@ import { makeCreatureSprite } from '../creature.js';
 import { audio } from '../audio.js';
 import { ui } from '../dom-ui.js';
 import { switchScene } from '../main.js';
-import { TUNING, rand, pick, clamp } from '../config.js';
+import { TUNING, MID_CHEER, iGa, pickVary, rand, pick, clamp } from '../config.js';
 
+/* 레벨별 길 모양 — 획 발달 순서(직선→대각선→꺾임→곡선→복합)를 따라 다양하게.
+   같은 레벨 안에서는 무작위 선택이라 다시 해도 새 길이 나온다 */
 const LEVELS = [
   [{ aspect: { w: 1, h: 1.4 }, pts: [[0.5, 0.05], [0.5, 1.35]] },
-   { aspect: { w: 2, h: 1 }, pts: [[0.05, 0.5], [1.95, 0.5]] }],
+   { aspect: { w: 2, h: 1 }, pts: [[0.05, 0.5], [1.95, 0.5]] },
+   { aspect: { w: 2, h: 1 }, arc: true }],
   [{ aspect: { w: 1.6, h: 1 }, pts: [[0.1, 0.1], [1.5, 0.9]] },
-   { aspect: { w: 1.6, h: 1 }, pts: [[0.1, 0.9], [1.5, 0.1]] }],
-  [{ aspect: { w: 2, h: 1 }, pts: [[0, 0.85], [0.5, 0.15], [1, 0.85], [1.5, 0.15], [2, 0.85]] }],
-  [{ aspect: { w: 2, h: 1 }, wave: true }],
-  [{ aspect: { w: 2, h: 1.1 }, loop: true }],
+   { aspect: { w: 1.6, h: 1 }, pts: [[0.1, 0.9], [1.5, 0.1]] },
+   { aspect: { w: 1.6, h: 1 }, pts: [[0.15, 0.1], [0.15, 0.85], [1.45, 0.85]] }],
+  /* 곡선(물결·언덕)이 각진 획(지그재그·계단)보다 먼저 — 작업치료 선긋기 위계 */
+  [{ aspect: { w: 2, h: 1 }, wave: true },
+   { aspect: { w: 2, h: 1 }, hills: true }],
+  [{ aspect: { w: 2, h: 1 }, pts: [[0, 0.85], [0.5, 0.15], [1, 0.85], [1.5, 0.15], [2, 0.85]] },
+   { aspect: { w: 2, h: 1 }, pts: [[0.05, 0.9], [0.7, 0.9], [0.7, 0.5], [1.35, 0.5], [1.35, 0.1], [1.95, 0.1]] }],
+  [{ aspect: { w: 2, h: 1.1 }, loop: true },
+   { aspect: { w: 2, h: 1.1 }, spiral: true }],
 ];
 function roadPath(lvl) {
   const def = pick(LEVELS[lvl - 1]);
-  if (def.wave) {
+  const sampled = (n, fn) => {
     const pts = [];
-    for (let i = 0; i <= 60; i++) {
-      const t = i / 60;
-      pts.push({ x: t * 2, y: 0.5 - 0.36 * Math.sin(t * Math.PI * 2) });
-    }
+    for (let i = 0; i <= n; i++) pts.push(fn(i / n));
     return { raw: pts, aspect: def.aspect };
+  };
+  if (def.arc) { // 완만한 무지개 호
+    return sampled(40, t => ({
+      x: (1 - t) * (1 - t) * 0.1 + 2 * (1 - t) * t * 1.0 + t * t * 1.9,
+      y: (1 - t) * (1 - t) * 0.8 + 2 * (1 - t) * t * 0.1 + t * t * 0.8,
+    }));
   }
-  if (def.loop) {
-    const pts = [];
-    for (let i = 0; i <= 80; i++) {
-      const t = i / 80;
-      pts.push({ x: t * 2, y: 0.55 - 0.3 * Math.sin(t * Math.PI * 4) * (t < 0.5 ? 1 : 0.7) });
-    }
-    return { raw: pts, aspect: def.aspect };
+  if (def.wave) return sampled(60, t => ({ x: t * 2, y: 0.5 - 0.36 * Math.sin(t * Math.PI * 2) }));
+  if (def.hills) return sampled(60, t => ({ x: 0.05 + t * 1.9, y: 0.88 - 0.68 * Math.abs(Math.sin(t * Math.PI * 2)) }));
+  if (def.loop) return sampled(80, t => ({ x: t * 2, y: 0.55 - 0.3 * Math.sin(t * Math.PI * 4) * (t < 0.5 ? 1 : 0.7) }));
+  if (def.spiral) { // 소용돌이: 바깥에서 가운데로 빙글빙글
+    return sampled(90, t => {
+      const a = t * Math.PI * 3.5;
+      const r = 0.52 - 0.4 * t;
+      return { x: 1.0 + r * 1.6 * Math.cos(a), y: 0.55 + r * 0.85 * Math.sin(a) };
+    });
   }
   return { raw: def.pts.map(p => ({ x: p[0], y: p[1] })), aspect: def.aspect };
 }
@@ -52,6 +65,7 @@ export class RoadScene extends Phaser.Scene {
     this.tracer = new Tracer(raw, aspect, lvl, false, w, h);
     this.hue = rand(0, 360);
     this.mile = 0;
+    this.halfCheered = false;
     this.state = 'trace';
     this.drawing = false;
 
@@ -88,7 +102,7 @@ export class RoadScene extends Phaser.Scene {
 
     ui.setPill('길을 따라 쭉~ 그어 주세요!');
     audio.speak(this.walkerChar
-      ? `${this.walkerChar.n}가 집에 가고 싶대요! 반짝이는 점부터 깃발까지 선을 그어 주세요!`
+      ? `${iGa(this.walkerChar.n)} 집에 가고 싶대요! 반짝이는 점부터 깃발까지 선을 그어 주세요!`
       : '반짝이는 점부터 깃발까지 선을 그어 주세요!');
   }
 
@@ -125,6 +139,10 @@ export class RoadScene extends Phaser.Scene {
     const step = Math.ceil(this.tracer.n / 8);
     const mile = Math.floor(this.tracer.coveredCount / step);
     if (mile > this.mile) { this.mile = mile; audio.pop(mile); }
+    if (!this.halfCheered && this.tracer.coverage >= 0.5) {
+      this.halfCheered = true;
+      audio.speak(pickVary(MID_CHEER), { pri: 2 }); // 다른 소리 중이면 조용히 스킵
+    }
     this.checkDone();
   }
   onUpEnd(p) {
