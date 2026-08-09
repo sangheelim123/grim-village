@@ -58,7 +58,17 @@ export class Tracer {
     const a = this.sp(0), b = this.sp(this.n - 1);
     if (Math.hypot(b.x - x, b.y - y) < Math.hypot(a.x - x, a.y - y)) this.samples.reverse();
   }
-  feed(x, y) {
+  /* 판정에 영향 없이 최근접 샘플 거리만 잰다 (다획 도형의 획 선택용) */
+  probe(x, y) {
+    let minDist = Infinity;
+    for (let i = 0; i < this.n; i++) {
+      const p = this.sp(i);
+      const d = Math.hypot(p.x - x, p.y - y);
+      if (d < minDist) minDist = d;
+    }
+    return minDist;
+  }
+  feed(x, y, skipDev) {
     const maxIdx = this.freeOrder ? this.n - 1
       : Math.min(this.n - 1, this.frontier + TUNING.lookahead);
     let minDist = Infinity;
@@ -73,7 +83,7 @@ export class Tracer {
       }
     }
     // 정확도 편차는 그리기 시작(첫 커버) 이후에만 누적 — 시작 전 탐색은 무벌점
-    if (this.coveredCount > 0) {
+    if (!skipDev && this.coveredCount > 0) {
       this.devSum += Math.min(minDist, this.R * 2);
       this.devCount++;
     }
@@ -95,6 +105,54 @@ export class Tracer {
     for (let i = 0; i < this.n; i++) if (!this.covered[i]) return i;
     return this.n - 1;
   }
+}
+
+/* 다획 도형(십자·엑스 등) 판정 — 획마다 Tracer 하나씩, 획 순서는 자유.
+   커버는 모든 미완성 획에 주되(교차점은 양쪽 다 인정), 정확도 편차는
+   최근접 획에만 누적한다 — 다른 획을 그리는 중인데 먼 획이 벌점을 받으면 안 된다. */
+export class MultiTracer {
+  constructor(strokesRaw, aspect, lvl, freeOrder, viewW, viewH) {
+    this.tracers = strokesRaw.map(raw => new Tracer(raw, aspect, lvl, freeOrder, viewW, viewH));
+    this.aspect = aspect;
+  }
+  get R() { return this.tracers[0].R; }
+  get n() { return this.tracers.reduce((s, t) => s + t.n, 0); }
+  get coveredCount() { return this.tracers.reduce((s, t) => s + t.coveredCount, 0); }
+  get coverage() { return this.coveredCount / this.n; }
+  get lastProgress() { return Math.max(...this.tracers.map(t => t.lastProgress)); }
+  get accuracy() {
+    let ds = 0, dc = 0;
+    for (const t of this.tracers) { ds += t.devSum; dc += t.devCount; }
+    if (!dc) return 1;
+    return clamp(1 - (ds / dc) / this.R, 0, 1);
+  }
+  /* 아직 다 못 채운 첫 획 (펄스·힌트 표시용) */
+  get activePart() {
+    return this.tracers.find(t => t.coveredCount < t.n) || this.tracers[this.tracers.length - 1];
+  }
+  fit(w, h) { for (const t of this.tracers) t.fit(w, h); }
+  feed(x, y) {
+    // 전체(완성 포함) 최근접 획을 찾는다 — 손가락이 이미 완성한 획 위에 있다면
+    // 남은 먼 획에 편차를 떠넘기지 않는다 (완성한 획 위의 손은 무벌점)
+    let best = null, bestD = Infinity;
+    for (const t of this.tracers) {
+      const d = t.probe(x, y);
+      if (d < bestD) { bestD = d; best = t; }
+    }
+    const devTarget = best && best.coveredCount < best.n ? best : null;
+    for (const t of this.tracers) {
+      if (t.coveredCount >= t.n) continue;
+      t.feed(x, y, t !== devTarget);
+    }
+  }
+  feedSegment(x0, y0, x1, y1) {
+    Tracer.prototype.feedSegment.call(this, x0, y0, x1, y1); // R·feed만 쓰므로 그대로 재사용
+  }
+}
+
+/* 단일/다획 트레이서를 획 배열로 균일하게 다룬다 (씬 렌더 코드용) */
+export function tracerParts(tr) {
+  return tr instanceof MultiTracer ? tr.tracers : [tr];
 }
 
 export function accToStars(acc) {

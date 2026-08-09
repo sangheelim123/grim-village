@@ -1,3 +1,7 @@
+/* 앱 버전 — 릴리스마다 올린다 (첫 화면 구석·부모 코너에 표시).
+   sw.js의 CACHE 상수도 함께 올려야 설치된 PWA에 새 버전이 전달된다 */
+export const VERSION = '1.1.0';
+
 /* 판정·밸런스 상수 — 전부 관대한 쪽이 기본값 */
 export const TUNING = {
   traceRFrac: 0.055,
@@ -12,6 +16,10 @@ export const TUNING = {
   adaptUp: 0.85, adaptDown: 0.45,
   charCap: 30,
   animCap: 8,
+  /* 기억 그리기(레벨 5): 견본을 보여 준 뒤 숨기는 시간 / 살짝 보기 시간.
+     숨겨도 언제든 다시 볼 수 있다 — 기억은 도전이지 시험이 아니다. */
+  memoryShowMs: 4500,
+  memoryPeekMs: 3000,
 };
 
 export const COLORS = {
@@ -33,6 +41,18 @@ export const PERSONALITIES = [
   { key: 2, name: '부끄럼쟁이', emoji: '🙈', desc: '만지면 볼이 빨개져요' },
 ];
 export const PRAISES = ['우와! 멋져요!', '정말 잘했어요!', '최고예요!', '대단해요!', '참 잘했어요!', '짱이에요!'];
+
+/* 따라 그리기 완료 칭찬 — 정확도별 표현만 다르고 전부 긍정 (실패 없음 원칙).
+   낮은 정확도 문구도 "끝까지 해냈다"를 칭찬한다. */
+export const TRACE_PRAISE = {
+  hi: ['선을 쏙쏙 따라 그렸네요! 손이 마법사예요!', '우와, 점선이 깜짝 놀라겠어요! 완벽해요!', '한 번에 쓱쓱! 정말 대단해요!'],
+  mid: ['멋지게 그렸어요! 점점 잘하고 있어요!', '우와, 씩씩하게 잘 그렸어요!', '선이 참 예쁘게 됐어요!'],
+  low: ['끝까지 다 그렸네요! 참 잘했어요!', '포기하지 않고 해냈어요! 멋져요!', '열심히 그린 게 최고예요!'],
+};
+/* 그리는 중간(절반쯤) 응원 — pri 2: 다른 소리가 나오는 중이면 조용히 넘어간다 */
+export const MID_CHEER = ['벌써 절반이나 왔어요!', '우와, 잘 가고 있어요!', '조금만 더예요!', '손가락이 씽씽 달리네요!'];
+/* 그림 놀이터: 다섯 획째 응원 (한 번만) */
+export const DRAW_CHEER = ['알록달록! 정말 멋진 그림이에요!', '우와, 화가님이 오셨네요!', '그림에서 반짝반짝 빛이 나요!'];
 
 export const DECOR_UNLOCKS = [
   { at: 6, key: 'garden', name: '꽃밭' },
@@ -59,11 +79,23 @@ export const SORT_SHAPES = [
   { key: 'square', name: '네모' },
 ];
 
-/* 받침에 맞는 을/를 조사 ("물방울를" 방지) */
-export function eulRl(word) {
+/* 받침에 맞는 조사 ("물방울를"·"동가" 방지) */
+function hasBatchim(word) {
   const code = word.charCodeAt(word.length - 1) - 0xAC00;
-  const bat = code >= 0 && code < 11172 && code % 28 !== 0;
-  return word + (bat ? '을' : '를');
+  return code >= 0 && code < 11172 && code % 28 !== 0;
+}
+export function eulRl(word) { return word + (hasBatchim(word) ? '을' : '를'); }
+export function iGa(word) { return word + (hasBatchim(word) ? '이가' : '가'); }
+export function eunNeun(word) { return word + (hasBatchim(word) ? '은' : '는'); }
+
+/* 직전 것만 피하는 랜덤 — 유아는 같은 말 반복에 금방 습관화된다 */
+const _lastPick = new WeakMap();
+export function pickVary(arr) {
+  if (arr.length < 2) return arr[0];
+  let i = Math.floor(Math.random() * arr.length);
+  if (i === _lastPick.get(arr)) i = (i + 1) % arr.length;
+  _lastPick.set(arr, i);
+  return arr[i];
 }
 
 export const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
