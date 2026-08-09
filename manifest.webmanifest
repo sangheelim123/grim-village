@@ -1,0 +1,16 @@
+{
+  "name": "무럭무럭 그림 마을",
+  "short_name": "그림 마을",
+  "description": "그리고, 세고, 나누며 나만의 마을을 키우는 4~7세 교육 놀이터",
+  "lang": "ko",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#8fd8ff",
+  "theme_color": "#8fd8ff",
+  "icons": [
+    { "src": "assets/img/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "assets/img/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
