@@ -3,7 +3,7 @@
 import { audio } from './audio.js';
 import { store } from './store.js';
 import { drawCreature2D, drawCreatureReplay } from './creature.js';
-import { PRAISES, PERSONALITIES, pickVary, eunNeun } from './config.js';
+import { PRAISES, PERSONALITIES, VERSION, pickVary, eunNeun } from './config.js';
 
 const $ = id => document.getElementById(id);
 
@@ -153,6 +153,7 @@ export const ui = {
     });
     $('parent-sound').textContent = audio.on ? '🔊 효과음·음성 켜짐' : '🔇 효과음·음성 꺼짐';
     $('parent-bgm').textContent = audio.bgmOn ? '🎵 배경음악 켜짐' : '🎵 배경음악 꺼짐';
+    $('parent-version').textContent = `앱 버전 v${VERSION}`;
     $('parent').classList.add('show');
   },
 };

@@ -3,6 +3,7 @@ import { store } from '../store.js';
 import { audio } from '../audio.js';
 import { ui } from '../dom-ui.js';
 import { switchScene } from '../main.js';
+import { VERSION } from '../config.js';
 
 export class ProfileScene extends Phaser.Scene {
   constructor() { super('Profile'); }
@@ -15,6 +16,8 @@ export class ProfileScene extends Phaser.Scene {
 
     this.title = this.add.text(0, 0, '무럭무럭 그림 마을', textStyle(46, '#ffffff', '#2a8ac0', 10)).setOrigin(0.5);
     this.sub = this.add.text(0, 0, '누가 놀러 왔나요? 얼굴을 눌러 주세요!', textStyle(21, '#2a6a9a')).setOrigin(0.5);
+    // 버전 표시 — 업데이트가 적용됐는지 한눈에 확인하는 용도
+    this.verText = this.add.text(0, 0, 'v' + VERSION, textStyle(13, '#5a86a0')).setOrigin(0, 1).setAlpha(0.75);
 
     let last = 0;
     try { last = +(localStorage.getItem('village-v4-last') || 0); } catch (e) {}
@@ -60,6 +63,7 @@ export class ProfileScene extends Phaser.Scene {
     this.hills.setPosition(w / 2, h + 10).setDisplaySize(Math.max(w * 1.1, 900), 240);
     this.title.setPosition(w / 2, h * 0.16).setFontSize(Math.min(52, w * 0.055));
     this.sub.setPosition(w / 2, h * 0.16 + Math.min(52, w * 0.055) * 0.9);
+    this.verText.setPosition(10, h - 8);
     const gap = Math.min(300, w * 0.3);
     const cy = h * 0.56;
     const sc = Math.min(1, w / 640, h / 560);
