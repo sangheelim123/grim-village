@@ -307,7 +307,30 @@ export class EggScene extends Phaser.Scene {
     const m = Math.min(w, h);
     this.eggImg.setPosition(w / 2, h / 2 + 8).setScale(m * 0.0021);
     this.nestImg.setPosition(w / 2, h / 2 + this.eggImg.displayHeight * 0.44).setScale(m * 0.0019);
-    if (this.tracer) this.tracer.fit(w, h);
+    if (this.tracer) {
+      // 회전·리사이즈 시 그리던 획을 가이드의 새 위치·크기로 함께 옮긴다
+      // (안 그러면 점선만 이동하고 아이의 선은 옛 자리에 남는다)
+      const ref = tracerParts(this.tracer)[0];
+      const old = { s: ref.scale, ox: ref.ox, oy: ref.oy };
+      this.tracer.fit(w, h);
+      if (this.state === 'trace' && old.s > 0 &&
+          (old.s !== ref.scale || old.ox !== ref.ox || old.oy !== ref.oy)) {
+        const map = q => [
+          (q[0] - old.ox) / old.s * ref.scale + ref.ox,
+          (q[1] - old.oy) / old.s * ref.scale + ref.oy,
+        ];
+        this.strokes = this.strokes.map(st => st.map(map));
+        if (this.stroke) this.stroke = this.stroke.map(map);
+      }
+    } else if (this.state === 'trace' && this._lastW && (this._lastW !== w || this._lastH !== h)) {
+      // 견본 모드(가이드 없음): 비율 유지로 화면에 맞춘다
+      const sc = Math.min(w / this._lastW, h / this._lastH);
+      const ox = (w - this._lastW * sc) / 2, oy = (h - this._lastH * sc) / 2;
+      const map = q => [q[0] * sc + ox, q[1] * sc + oy];
+      this.strokes = this.strokes.map(st => st.map(map));
+      if (this.stroke) this.stroke = this.stroke.map(map);
+    }
+    this._lastW = w; this._lastH = h;
     if (this.sampleTracer && this.state === 'trace') {
       this.sampleTracer.fit(w, h);
       const ss = m * 0.19;

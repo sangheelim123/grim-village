@@ -6,6 +6,7 @@ import { EggScene } from './scenes/EggScene.js';
 import { FeedScene } from './scenes/FeedScene.js';
 import { SortScene } from './scenes/SortScene.js';
 import { DrawScene } from './scenes/DrawScene.js';
+import { AquaScene } from './scenes/AquaScene.js';
 import { bindGlobalUI, ui } from './dom-ui.js';
 import { audio } from './audio.js';
 import { store } from './store.js';
@@ -20,7 +21,7 @@ const game = new Phaser.Game({
   },
   render: { antialias: true, roundPixels: false },
   input: { activePointers: 3 },
-  scene: [BootScene, ProfileScene, VillageScene, RoadScene, EggScene, FeedScene, SortScene, DrawScene],
+  scene: [BootScene, ProfileScene, VillageScene, RoadScene, EggScene, FeedScene, SortScene, DrawScene, AquaScene],
 });
 
 /* 장면 전환 (페이드 + 휙 소리). Phaser가 씬 종료 시 타이머·트윈을 정리하므로
@@ -42,7 +43,7 @@ export function switchScene(from, key, data) {
 }
 
 function activeGameScene() {
-  for (const key of ['Village', 'Road', 'Egg', 'Feed', 'Sort', 'Draw', 'Profile']) {
+  for (const key of ['Village', 'Road', 'Egg', 'Feed', 'Sort', 'Draw', 'Aqua', 'Profile']) {
     const s = game.scene.getScene(key);
     if (s && game.scene.isActive(key)) return s;
   }
@@ -64,6 +65,11 @@ game.events.on('repeat-voice', () => {
 
 bindGlobalUI(game);
 window.__game = game;
+
+/* iOS 등에서 회전 직후 캔버스 크기가 어긋나는 문제 — 안정화 후 강제 재측정 */
+window.addEventListener('orientationchange', () => {
+  setTimeout(() => { try { game.scale.refresh(); } catch (e) {} }, 350);
+});
 
 /* 오늘 놀이 시간 누적 */
 let statAccum = 0, lastT = performance.now();

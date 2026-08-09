@@ -1,10 +1,9 @@
 import { audio } from '../audio.js';
 import { ui } from '../dom-ui.js';
 import { switchScene } from '../main.js';
-import { DRAW_COLORS, CHAR_COLORS, DRAW_CHEER, pickVary } from '../config.js';
+import { DRAW_COLORS, CHAR_COLORS, DRAW_CHEER, RAINBOW, pickVary } from '../config.js';
 
-/* 무지개 붓: 색 인덱스가 DRAW_COLORS 길이와 같으면 점 순서를 따라 색이 흐른다 */
-const RAINBOW = DRAW_COLORS.length;
+/* 무지개 붓: 색 인덱스가 RAINBOW면 점 순서를 따라 색이 흐른다 */
 function segColor(stroke, i) {
   if (stroke.c !== RAINBOW) return Phaser.Display.Color.HexStringToColor(DRAW_COLORS[stroke.c]).color;
   return Phaser.Display.Color.HSLToColor(((stroke.h0 + i * 5) % 360) / 360, 0.85, 0.6).color;
@@ -91,6 +90,16 @@ export class DrawScene extends Phaser.Scene {
 
   layout() {
     const { width: w, height: h } = this.scale;
+    // 회전·리사이즈 시 그리던 그림을 비율 유지로 새 화면에 맞춘다 (그림이 밖으로 밀려나지 않게)
+    if (this._lastW && (this._lastW !== w || this._lastH !== h)) {
+      const sc = Math.min(w / this._lastW, h / this._lastH);
+      const ox = (w - this._lastW * sc) / 2, oy = (h - this._lastH * sc) / 2;
+      const remap = s => { s.pts = s.pts.map(q => [q[0] * sc + ox, q[1] * sc + oy]); };
+      this.strokes.forEach(remap);
+      if (this.stroke) remap(this.stroke);
+      if (this.clearedBackup) this.clearedBackup.forEach(remap);
+    }
+    this._lastW = w; this._lastH = h;
     this.paper.setSize(w, h);
     this.lineG.clear();
     this.lineG.lineStyle(2, 0xf0e8d8, 1);

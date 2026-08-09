@@ -8,6 +8,7 @@ function defaultState() {
     v: 1,
     chars: [],
     trails: [],
+    aqua: [], // 수족관 물고기 (색 보존 스트로크)
     flowers: 0,
     stars: { road: 0, egg: 0, feed: 0, sort: 0 },
     lvl: { road: 1, egg: 1, feed: 1, sort: 1 },

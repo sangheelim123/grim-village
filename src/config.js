@@ -1,6 +1,6 @@
 /* 앱 버전 — 릴리스마다 올린다 (첫 화면 구석·부모 코너에 표시).
    sw.js의 CACHE 상수도 함께 올려야 설치된 PWA에 새 버전이 전달된다 */
-export const VERSION = '1.1.0';
+export const VERSION = '1.2.0';
 
 /* 판정·밸런스 상수 — 전부 관대한 쪽이 기본값 */
 export const TUNING = {
@@ -33,6 +33,8 @@ export const COLORS = {
 export const CHAR_COLORS = ['#ffb3c1', '#ffd166', '#95d5b2', '#a8d8f0', '#cdb4f0', '#ffc49b'];
 export const CHAR_DARK = ['#e0708a', '#d09a20', '#4a9a6a', '#4a90c0', '#8a60c0', '#e08a50'];
 export const DRAW_COLORS = ['#4a3f35', '#ff5c5c', '#ff9838', '#ffd21e', '#4dc25e', '#4a90e2', '#a06ae8', '#ff7db0'];
+/* 무지개 붓: DRAW_COLORS 다음 인덱스 (그림 놀이터·수족관 공용) */
+export const RAINBOW = DRAW_COLORS.length;
 export const NAME_SYL = ['모', '미', '보', '리', '두', '코', '나', '비', '로', '쭈', '뽀', '까', '유', '타', '핑', '동'];
 /* 성격: 어떤 성격도 탭 보상(소리+하트)을 깨지 않는다 — 표현만 다르다 */
 export const PERSONALITIES = [
