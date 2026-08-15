@@ -340,6 +340,26 @@ export function bindGlobalUI(game) {
     audio.setBgm(!audio.bgmOn);
     $('parent-bgm').textContent = audio.bgmOn ? '🎵 배경음악 켜짐' : '🎵 배경음악 꺼짐';
   });
+  /* 최신 버전 받기 — 캐시를 비우고 서비스워커를 새로 등록한 뒤 다시 연다.
+     localStorage(친구·그림)는 건드리지 않는다. */
+  const forceBtn = $('btn-force-update');
+  if (forceBtn) forceBtn.addEventListener('click', async () => {
+    forceBtn.textContent = '⏳ 받는 중...';
+    store.flush();
+    try {
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map(k => caches.delete(k)));
+      }
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(r => r.unregister()));
+      }
+    } catch (e) {}
+    // 쿼리를 붙여 브라우저 HTTP 캐시까지 확실히 우회한다
+    location.replace(location.pathname + '?v=' + Date.now());
+  });
+
   let resetArmed = false;
   $('btn-reset-data').addEventListener('click', () => {
     if (!resetArmed) {
