@@ -94,9 +94,39 @@ setInterval(() => {
   }
 }, 2000);
 
-/* PWA 서비스 워커 (http/https에서만) */
+/* PWA 서비스 워커 (http/https에서만).
+   설치된 앱이 새 버전을 실제로 받아오게 하는 3단계:
+   1) 앱이 앞으로 올 때마다 새 워커가 있는지 확인 (update)
+   2) 새 워커가 제어권을 잡으면 한 번만 자동 새로고침 — 그래야 새 코드가 실제로 돈다
+   3) 첫 설치(이전 워커 없음)에서는 새로고침하지 않는다 (불필요한 깜빡임 방지) */
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  const hadController = !!navigator.serviceWorker.controller;
+  const RELOAD_KEY = 'village-sw-reload';
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing || !hadController) return;
+    // 문서가 바뀌면 위 플래그도 사라진다 — 탭 수명 저장소로 재로드 루프를 막는다
+    let last = 0;
+    try { last = +(sessionStorage.getItem(RELOAD_KEY) || 0); } catch (e) {}
+    if (Date.now() - last < 60000) return;
+    try { sessionStorage.setItem(RELOAD_KEY, String(Date.now())); } catch (e) {}
+    refreshing = true;
+    // 그리는 중이거나 축하 중이면 기다렸다가, 손을 뗀 조용한 순간에 적용한다
+    // (한창 그리던 그림이 새로고침으로 날아가면 안 된다)
+    const busy = () => {
+      const s = activeGameScene();
+      if (s && (s.stroke || s.drawing)) return true;
+      return !!document.querySelector('#celebrate.show, #book.show, #gallery.show, #parent.show');
+    };
+    const tryReload = () => { if (busy()) setTimeout(tryReload, 1500); else location.reload(); };
+    tryReload();
+  });
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
+    navigator.serviceWorker.register('./sw.js').then(reg => {
+      const check = () => { try { reg.update(); } catch (e) {} };
+      check();
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
+      window.addEventListener('focus', check);
+    }).catch(() => {});
   });
 }
