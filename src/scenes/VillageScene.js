@@ -1,4 +1,4 @@
-import { addSky, pressify, textStyle, heartBurst } from './common.js';
+import { addSky, pressify, textStyle, heartBurst, sparkleBurst } from './common.js';
 import { store, creatureSize } from '../store.js';
 import { makeCreatureSprite } from '../creature.js';
 import { audio } from '../audio.js';
@@ -24,9 +24,36 @@ export class VillageScene extends Phaser.Scene {
 
     this.bg = addSky(this, { clouds: 3 });
     this.nightSky = this.add.image(0, 0, 'sky_night').setOrigin(0).setDepth(-99).setAlpha(0);
+    // 노을 레이어 (해질녘·해뜰녘에만 하늘 아래쪽이 주황빛으로 물든다)
+    this.duskG = this.add.graphics().setDepth(-89);
+    this._lastGlow = -1;
+    // 밤하늘 별 (밤에만 반짝반짝)
+    this.stars = [];
+    for (let i = 0; i < 16; i++) {
+      const s = this.add.image(0, 0, 'sparkle').setDepth(-92).setAlpha(0).setScale(0.2 + Math.random() * 0.14);
+      s.fx = Math.random(); s.fy = 0.03 + Math.random() * 0.32; s.tw = Math.random() * 6.3;
+      this.stars.push(s);
+    }
+    // 해·달: 왼쪽 지평선에서 떠서 가운데를 지나 오른쪽으로 진다 (update가 위치를 몬다)
     this.sun = this.add.image(0, 0, 'sun').setDepth(-88);
     this.moon = this.add.image(0, 0, 'moon').setDepth(-88).setAlpha(0);
+    this.cycleOffset = 0; // 테스트·디버그용 시간 이동
     this.tweens.add({ targets: [this.sun, this.moon], angle: 6, duration: 3000, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    // 해님·달님도 만질 수 있다 (탭 보상 문법 그대로)
+    const skyTaps = [
+      [this.sun, ['앗, 뜨거워라! 히히!', '해님이 방긋 웃어요!']],
+      [this.moon, ['쉿! 달님이 인사해요', '좋은 꿈 꾸세요~']],
+    ];
+    for (const [obj, lines] of skyTaps) {
+      obj.setInteractive(new Phaser.Geom.Circle(obj.width / 2, obj.height / 2, obj.width * 0.55), Phaser.Geom.Circle.Contains);
+      obj.on('pointerdown', () => {
+        if (obj.alpha < 0.4) return; // 져 있는 동안은 반응하지 않는다
+        audio.squeak();
+        sparkleBurst(this, obj.x, obj.y, 8);
+        this.tweens.add({ targets: obj, scale: obj.scale * 1.15, duration: 150, yoyo: true });
+        if (Math.random() < 0.5) audio.speak(pick(lines), { pri: 2 });
+      });
+    }
 
     this.rainbowImg = this.add.image(0, 0, 'rainbow').setDepth(-72).setAlpha(P.decor.includes('rainbow') ? 0.85 : 0);
     this.hillsFar = this.add.image(0, 0, 'hills_far').setOrigin(0.5, 1).setDepth(-70);
@@ -240,18 +267,62 @@ export class VillageScene extends Phaser.Scene {
   }
 
   update(now) {
-    // 4분 주기 낮/밤
-    const t = (now / 1000) % 240;
+    /* 4분 주기: 해가 왼쪽 지평선에서 떠서 가운데를 지나 오른쪽으로 지고(0~112초),
+       노을이 물들며 밤이 오면(112~128초) 달이 같은 길을 따라간다(126~224초).
+       해·달은 언덕(-70)보다 뒤(-88)라 지평선 뒤로 자연스럽게 잠긴다. */
+    const { width: w, height: h } = this.scale;
+    const T = 240;
+    const t = ((now / 1000) + this.cycleOffset) % T;
+    const bell = (x, c, sd) => Math.exp(-((x - c) * (x - c)) / (2 * sd * sd));
+
     let nf = 0;
-    if (t >= 170 && t < 190) nf = (t - 170) / 20;
-    else if (t >= 190 && t < 225) nf = 1;
-    else if (t >= 225) nf = 1 - (t - 225) / 15;
+    if (t >= 112 && t < 128) nf = (t - 112) / 16;
+    else if (t >= 128 && t < 222) nf = 1;
+    else if (t >= 222) nf = 1 - (t - 222) / 18;
     this.nightSky.setAlpha(nf);
-    this.sun.setAlpha(1 - nf);
-    this.moon.setAlpha(nf);
+
+    // 해·달 호 궤적: 좌측 하단 → 중앙 상단 → 우측 하단
+    const horizonY = h * 0.68, apexY = h * 0.1;
+    const arc = p => ({ x: w * (0.05 + 0.9 * p), y: horizonY - Math.sin(p * Math.PI) * (horizonY - apexY) });
+    if (t < 112) {
+      const q = arc(t / 112);
+      this.sun.setPosition(q.x, q.y).setAlpha(1);
+    } else this.sun.setAlpha(0);
+    if (t >= 126 && t <= 224) {
+      const q = arc((t - 126) / 98);
+      this.moon.setPosition(q.x, q.y).setAlpha(1);
+    } else this.moon.setAlpha(0);
+
+    // 노을: 해질녘이 가장 붉고, 새벽·아침은 은은하게
+    const glow = Math.min(1, bell(t, 107, 11) + bell(t, 233, 9) * 0.8 + bell(t, 6, 8) * 0.6);
+    if (Math.abs(glow - this._lastGlow) > 0.02 || this._glowW !== w || this._glowH !== h) {
+      this._lastGlow = glow; this._glowW = w; this._glowH = h;
+      this.duskG.clear();
+      if (glow > 0.02) {
+        this.duskG.fillGradientStyle(0xff9a50, 0xff9a50, 0xff5a6a, 0xff5a6a, 0, 0, glow * 0.5, glow * 0.5);
+        this.duskG.fillRect(0, 0, w, h * 0.72);
+      }
+    }
+
+    // 별: 밤에만, 제각각 반짝
+    for (const s of this.stars) {
+      s.setAlpha(nf * (0.35 + 0.45 * (0.5 + 0.5 * Math.sin(now * 0.004 + s.tw))));
+    }
+
+    // 언덕·땅: 밤에는 어둡고 푸르게, 노을엔 따뜻하게 / 구름은 노을에 분홍빛
     const dim = 1 - nf * 0.45;
-    const tint = Phaser.Display.Color.GetColor(Math.round(255 * dim), Math.round(255 * dim), Math.round(255 * (1 - nf * 0.25)));
+    const warm = glow * 0.5;
+    const tint = Phaser.Display.Color.GetColor(
+      Math.round(255 * dim),
+      Math.round(255 * dim * (1 - warm * 0.25)),
+      Math.round(255 * (1 - nf * 0.25) * (1 - warm * 0.5)));
     [this.hillsFar, this.hillsNear, this.groundImg, this.fountainImg].forEach(o => o.setTint(tint));
+    const cloudTint = Phaser.Display.Color.GetColor(
+      Math.round(255 * Math.min(1, dim + warm * 0.5)), // 노을엔 발그레, 밤엔 함께 어두워진다
+      Math.round(255 * dim * (1 - warm * 0.35)),
+      Math.round(255 * (1 - nf * 0.3) * (1 - warm * 0.5)));
+    for (const c of this.bg.clouds) c.setTint(cloudTint);
+
     const fireflyOn = nf > 0.4 && store.P.decor.includes('firefly');
     if (fireflyOn && !this._ffOn) { this.fireflies.start(); this._ffOn = true; }
     if (!fireflyOn && this._ffOn) { this.fireflies.stop(); this._ffOn = false; }
@@ -263,8 +334,9 @@ export class VillageScene extends Phaser.Scene {
     const m = Math.min(w, h);
     this.bg.sky.setDisplaySize(w, h);
     this.nightSky.setDisplaySize(w, h);
-    this.sun.setPosition(w * 0.5, h * 0.1).setScale(m * 0.0009);
-    this.moon.setPosition(w * 0.5, h * 0.1).setScale(m * 0.0009);
+    this.sun.setScale(m * 0.0009); // 위치는 update()의 호 궤적이 정한다
+    this.moon.setScale(m * 0.0009);
+    for (const s of this.stars) s.setPosition(s.fx * w, s.fy * h);
     this.rainbowImg.setPosition(w * 0.5, h * 0.46).setScale(Math.min(1.2, w / 700));
     this.hillsFar.setPosition(w / 2, h * 0.62).setDisplaySize(Math.max(w * 1.05, 800), h * 0.24);
     this.hillsNear.setPosition(w / 2, h * 0.74).setDisplaySize(Math.max(w * 1.05, 800), h * 0.26);
