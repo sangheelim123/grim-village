@@ -138,7 +138,15 @@ button { font-family: inherit; cursor: pointer; border: none; }
   width: min(94vw, 580px); max-height: 88vh; overflow-y: auto; touch-action: pan-y;
   box-shadow: 0 10px 0 #e3d5b8, 0 24px 48px rgba(0,0,0,0.35); text-align: center;
   animation: popBox 0.4s cubic-bezier(.34,1.56,.64,1);
+  position: relative;
 }
+/* 오버레이 공통 ✕ — 스크롤과 무관하게 항상 같은 자리에 떠 있다 */
+.overlay-x {
+  position: sticky; top: 0; float: right; margin: -6px -6px 0 0; z-index: 5;
+  width: 46px; height: 46px; border-radius: 50%; font-size: 22px; font-weight: 800;
+  background: #ffe3d0; color: #d95f33; box-shadow: 0 3px 0 #e8b898;
+}
+.overlay-x:active { transform: scale(0.9); }
 #book-box h2 { font-size: clamp(21px, 5vmin, 28px); color: #ff8a5c; margin-bottom: 2px; }
 #book-sub { font-size: clamp(13px, 3.2vmin, 16px); color: #9a8a70; margin-bottom: 12px; }
 #book-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(106px, 1fr)); gap: 10px; }
@@ -172,6 +180,7 @@ button { font-family: inherit; cursor: pointer; border: none; }
   box-shadow: 0 24px 48px rgba(0,0,0,0.35);
   animation: popBox 0.35s ease; font-size: 15px; line-height: 1.6;
   font-family: 'Apple SD Gothic Neo', sans-serif;
+  position: relative;
 }
 #parent-box h2 { font-size: 20px; color: #2a6a9a; margin-bottom: 10px; font-family: 'Jua', sans-serif; }
 #parent-box h3 { font-size: 15px; color: #4a3f35; margin: 14px 0 6px; }
@@ -238,6 +247,7 @@ button { font-family: inherit; cursor: pointer; border: none; }
 
 <div id="book">
   <div id="book-box">
+    <button class="overlay-x" id="book-x" aria-label="닫기">✕</button>
     <h2>📔 우리 마을 친구들</h2>
     <div id="book-sub"></div>
     <div id="book-grid"></div>
@@ -248,6 +258,7 @@ button { font-family: inherit; cursor: pointer; border: none; }
 
 <div id="parent">
   <div id="parent-box">
+    <button class="overlay-x" id="parent-x" aria-label="닫기">✕</button>
     <h2>👨‍👩‍👧 부모 코너</h2>
     <div id="parent-stats"></div>
     <h3>시작 난이도 (현재 프로필)</h3>
@@ -268,7 +279,7 @@ button { font-family: inherit; cursor: pointer; border: none; }
     <span id="parent-version"></span></div>
     <div id="parent-btns">
       <button id="btn-reset-data">데이터 초기화</button>
-      <button id="parent-close-btn">닫기</button>
+      <button id="parent-close-btn">✅ 확인</button>
     </div>
   </div>
 </div>

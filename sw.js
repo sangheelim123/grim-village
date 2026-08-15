@@ -1,5 +1,5 @@
 /* 오프라인 캐시: 설치 시 전체 프리캐시, 이후 캐시 우선 */
-const CACHE = 'village-v4-7';
+const CACHE = 'village-v4-8';
 const ASSETS = [
   './', './index.html', './manifest.webmanifest',
   './vendor/phaser.min.js',
@@ -33,12 +33,16 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   e.respondWith(
-    caches.match(e.request, { ignoreSearch: true }).then(hit =>
-      hit || fetch(e.request).then(res => {
-        const copy = res.clone();
-        caches.open(CACHE).then(c => c.put(e.request, copy));
-        return res;
-      })
-    )
+    // 반드시 현재 버전 캐시에서만 꺼낸다 — caches.match는 모든 캐시를 뒤지므로
+    // 업데이트 직후 구·신 파일이 섞여 부팅이 깨지는 창이 생긴다
+    caches.open(CACHE)
+      .then(c => c.match(e.request, { ignoreSearch: true }))
+      .then(hit =>
+        hit || fetch(e.request).then(res => {
+          const copy = res.clone();
+          caches.open(CACHE).then(c => c.put(e.request, copy));
+          return res;
+        })
+      )
   );
 });

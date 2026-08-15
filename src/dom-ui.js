@@ -7,6 +7,48 @@ import { PRAISES, PERSONALITIES, VERSION, pickVary, eunNeun } from './config.js'
 
 const $ = id => document.getElementById(id);
 
+/* 오버레이(도감·부모 코너) 열기/닫기.
+   열 때 history에 한 칸을 쌓아, 설치형 앱에서 뒤로가기를 누르면
+   앱이 꺼지는 대신 오버레이만 닫히게 한다 (popstate가 실제 닫기를 수행). */
+let pushedCount = 0;   // 우리가 history에 쌓아 둔 오버레이 항목 수
+let ignorePop = 0;     // 우리가 스스로 부른 back()이 만든 popstate는 무시
+let overlayOpenedAt = 0;
+let gameRef = null;
+
+/* DOM 오버레이(도감·부모 코너·축하)가 떠 있는 동안 게임 입력을 잠근다.
+   Phaser는 창 레벨에서도 포인터를 듣기 때문에, 잠그지 않으면 오버레이 버튼을 누른
+   손가락이 그 아래 놀이 섬 간판까지 함께 눌러 엉뚱한 씬으로 넘어간다 (실기기 확인). */
+export function refreshInputGate() {
+  if (!gameRef) return;
+  const blocked = !!document.querySelector('#parent.show, #book.show, #celebrate.show');
+  try {
+    gameRef.input.enabled = !blocked;
+    if (gameRef.canvas) gameRef.canvas.style.pointerEvents = blocked ? 'none' : '';
+  } catch (e) {}
+}
+
+function openOverlay(id) {
+  $(id).classList.add('show');
+  overlayOpenedAt = Date.now();
+  refreshInputGate();
+  try { history.pushState({ ov: true }, ''); pushedCount++; } catch (e) {}
+}
+/* 닫기는 history와 무관하게 항상 즉시 성공한다 — history 되감기는 부수적으로만 시도 */
+function closeOverlay(id) {
+  const el = $(id);
+  if (!el.classList.contains('show')) return;
+  el.classList.remove('show');
+  refreshInputGate();
+  if (pushedCount > 0) {
+    pushedCount--; ignorePop++;
+    try { history.back(); } catch (e) { ignorePop--; }
+  }
+}
+function hideAllOverlays() {
+  document.querySelectorAll('#parent.show, #book.show').forEach(el => el.classList.remove('show'));
+  refreshInputGate();
+}
+
 export const ui = {
   setPill(text) {
     const el = $('pill');
@@ -64,13 +106,14 @@ export const ui = {
     $('cel-msg').textContent = opts.msg || '';
     $('cel-again').style.display = opts.onAgain ? '' : 'none';
     $('celebrate').classList.add('show');
+    refreshInputGate(); // 축하창 버튼이 뒤의 게임까지 누르지 않게
     audio.fanfare();
     // 칭찬 문구는 대형 텍스트+별로 이미 전달됨 — 핵심 메시지만, 팡파레와 겹치지 않게 늦게 발화
     if (opts.speakMsg) setTimeout(() => audio.speak(opts.speakMsg), 600);
     store.P.stats.plays++;
     store.save();
   },
-  closeCelebrate() { $('celebrate').classList.remove('show'); },
+  closeCelebrate() { $('celebrate').classList.remove('show'); refreshInputGate(); },
 
   /* ---- 도감 ---- */
   openBook() {
@@ -117,7 +160,7 @@ export const ui = {
       card.appendChild(st);
       grid.appendChild(card);
     });
-    $('book').classList.add('show');
+    openOverlay('book');
     audio.pop(3);
   },
   playReplay(cv, char) {
@@ -153,13 +196,15 @@ export const ui = {
     });
     $('parent-sound').textContent = audio.on ? '🔊 효과음·음성 켜짐' : '🔇 효과음·음성 꺼짐';
     $('parent-bgm').textContent = audio.bgmOn ? '🎵 배경음악 켜짐' : '🎵 배경음악 꺼짐';
-    $('parent-version').textContent = `앱 버전 v${VERSION}`;
-    $('parent').classList.add('show');
+    const pv = $('parent-version'); // 구버전 캐시 HTML엔 없을 수 있다 — 열림 자체는 막지 않는다
+    if (pv) pv.textContent = `앱 버전 v${VERSION}`;
+    openOverlay('parent');
   },
 };
 
 /* 공통 DOM 이벤트 바인딩 — main.js에서 1회 호출 */
 export function bindGlobalUI(game) {
+  gameRef = game;
   $('cel-again').addEventListener('click', () => {
     ui.closeCelebrate();
     audio.pop(2);
@@ -186,8 +231,35 @@ export function bindGlobalUI(game) {
   });
   $('btn-book').addEventListener('click', () => ui.openBook());
   $('book-close').addEventListener('click', () => {
-    $('book').classList.remove('show');
+    closeOverlay('book');
     audio.tap();
+  });
+  // 항상 보이는 ✕, 그리고 어두운 바깥을 눌러도 닫힌다
+  $('book-x').addEventListener('click', () => { closeOverlay('book'); audio.tap(); });
+  $('parent-x').addEventListener('click', () => { closeOverlay('parent'); audio.tap(); });
+  /* 어두운 바깥을 눌러서 닫기.
+     주의 (실기기 터치 버그 이력): 기어를 3초 길게 눌러 설정이 열리면, 손을 떼는 순간
+     그 손가락이 '새로 뜬 창의 바깥'을 누른 것으로 click이 전달돼 즉시 닫혀 버린다.
+     그래서 (1) 누르기가 실제로 바깥에서 시작됐는지 확인하고 (2) 갓 열린 창은 잠깐 보호한다. */
+  for (const id of ['book', 'parent']) {
+    let downOnBackdrop = false;
+    $(id).addEventListener('pointerdown', e => { downOnBackdrop = e.target.id === id; });
+    $(id).addEventListener('click', e => {
+      if (e.target.id !== id || !downOnBackdrop) return;
+      downOnBackdrop = false;
+      if (Date.now() - overlayOpenedAt < 500) return;
+      closeOverlay(id);
+      audio.tap();
+    });
+  }
+  // 설치형 앱의 뒤로가기: 오버레이가 열려 있으면 앱을 끄지 않고 그것만 닫는다
+  window.addEventListener('popstate', () => {
+    if (ignorePop > 0) { ignorePop--; return; } // 우리가 부른 back()의 메아리
+    if (document.querySelector('#parent.show, #book.show')) {
+      pushedCount = Math.max(0, pushedCount - 1);
+      hideAllOverlays();
+      audio.tap();
+    }
   });
 
   let gearTimer = null;
@@ -230,10 +302,10 @@ export function bindGlobalUI(game) {
     store.reset();
     resetArmed = false;
     $('btn-reset-data').textContent = '데이터 초기화';
-    $('parent').classList.remove('show');
+    closeOverlay('parent');
     game.events.emit('goto-village');
   });
-  $('parent-close-btn').addEventListener('click', () => $('parent').classList.remove('show'));
+  $('parent-close-btn').addEventListener('click', () => { closeOverlay('parent'); audio.pop(3); });
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') store.flush();
