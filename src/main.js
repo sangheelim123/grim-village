@@ -111,22 +111,46 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     if (Date.now() - last < 60000) return;
     try { sessionStorage.setItem(RELOAD_KEY, String(Date.now())); } catch (e) {}
     refreshing = true;
-    // 그리는 중이거나 축하 중이면 기다렸다가, 손을 뗀 조용한 순간에 적용한다
-    // (한창 그리던 그림이 새로고침으로 날아가면 안 된다)
+    /* 아직 저장되지 않은 창작물이 하나라도 있으면 새로고침하지 않는다.
+       손가락이 화면에 닿아 있는 순간만 보면 안 된다 — 아이의 그림은 손을 뗀 뒤
+       메모리(strokes)에만 있다가 '걸기/보내기/부화' 때 비로소 저장된다.
+       그 사이(획과 획 사이, 색·눈·이름 고르는 내내)에 새로고침하면 통째로 사라진다. */
     const busy = () => {
+      // 화면이 꺼져 있거나 다른 앱에 가려져 있을 때 새로고침하면
+      // (특히 홈 화면 설치 앱에서) 돌아왔을 때 하얀 화면을 만날 수 있다
+      if (document.hidden) return true;
       const s = activeGameScene();
-      if (s && (s.stroke || s.drawing)) return true;
+      if (!s) return true; // 부팅 중 — 로딩을 끊지 않는다
+      if (s) {
+        if (s.stroke || s.drawing) return true;                 // 손이 화면에 닿아 있다
+        if (s.strokes && s.strokes.length) return true;         // 저장 전 그림이 메모리에 있다
+        if (s.scene.key === 'Egg' && s.state && s.state !== 'pick') return true; // 꾸미기·이름 짓는 중
+      }
       return !!document.querySelector('#celebrate.show, #book.show, #gallery.show, #parent.show');
     };
-    const tryReload = () => { if (busy()) setTimeout(tryReload, 1500); else location.reload(); };
+    const deadline = Date.now() + 180000; // 3분 넘게 바쁘면 포기하고 다음 실행에 맡긴다
+    const tryReload = () => {
+      if (busy()) {
+        if (Date.now() < deadline) setTimeout(tryReload, 1500);
+        else refreshing = false;
+        return;
+      }
+      store.flush(); // 혹시 남아 있는 저장 예약을 확실히 내보낸다
+      location.reload();
+    };
     tryReload();
   });
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').then(reg => {
-      const check = () => { try { reg.update(); } catch (e) {} };
+      let lastCheck = 0;
+      const check = () => {
+        // 30초 스로틀 — 앱 전환을 반복해도 네트워크를 두드리지 않는다
+        if (Date.now() - lastCheck < 30000) return;
+        lastCheck = Date.now();
+        try { const r = reg.update(); if (r && r.catch) r.catch(() => {}); } catch (e) {}
+      };
       check();
       document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
-      window.addEventListener('focus', check);
     }).catch(() => {});
   });
 }

@@ -1,5 +1,5 @@
 /* 오프라인 캐시: 설치 시 전체 프리캐시, 이후 캐시 우선 */
-const CACHE = 'village-v4-10';
+const CACHE = 'village-v4-11';
 const ASSETS = [
   './', './index.html', './manifest.webmanifest',
   './vendor/phaser.min.js',
@@ -50,57 +50,72 @@ self.addEventListener('activate', e => {
    캐시 조회는 반드시 현재 버전 캐시에서만: caches.match는 모든 캐시를 뒤져
    업데이트 직후 구·신 파일이 섞이고, ES 모듈은 섞이는 순간 바로 깨진다.
 
-   예외는 '첫 진입(navigate)' 하나뿐이다. 어떤 이유로 새 서비스워커가 아직
-   안 깔렸어도 문 앞에서 새 index.html을 한 번 확인해 보고, 2초 안에 응답이
-   없거나 오프라인이면 즉시 캐시로 논다 — 요청이 하나뿐이라 부팅이 느려지지 않는다. */
+   새 버전은 '설치 → activate → 자동 새로고침'으로 통째로 갈아탄다.
+   요청 단위로 새것을 섞어 오면 안 된다 — 섞이는 순간 앱이 깨진다. */
 self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return;
   let url;
   try { url = new URL(req.url); } catch (err) { return; }
   if (url.origin !== self.location.origin) return; // 외부 요청은 건드리지 않는다
+  // 인터넷 연결 확인용 요청은 절대 캐시로 답하지 않는다 —
+  // 캐시가 대신 응답하면 오프라인인데도 '연결됨'으로 착각해 캐시를 지워 버린다
+  if (url.searchParams.has('probe')) return;
 
   const fromCache = () => caches.open(CACHE)
     .then(c => c.match(req, { ignoreSearch: true }).then(hit => hit || c.match('./index.html')));
 
+  /* 첫 진입(navigate)도 반드시 캐시에서 — 셸(HTML)과 모듈(JS)은 같은 세대여야 한다.
+     네트워크에서 새 index.html만 받아 오면 그 페이지가 캐시의 옛 src/*.js를 불러
+     "새 HTML + 옛 JS"가 실행된다. ES 모듈은 그 순간 바로 깨지고(없는 DOM id 참조),
+     심지어 그 혼합 HTML이 캐시에 그대로 저장돼 오프라인 부팅까지 망가진다.
+     신선도는 install 프리캐시(cache:'reload') + controllerchange 자동 새로고침이 담당한다. */
   if (req.mode === 'navigate') {
-    let fresh;
-    // navigate 요청을 그대로 재구성하지 못하는 브라우저가 있다 — 실패하면 원본을 쓴다
-    try { fresh = new Request(req, { cache: 'no-cache' }); } catch (err) { fresh = req; }
     e.respondWith(
-      Promise.race([
-        fetch(fresh).then(res => {
-          if (res && res.ok) {
-            const copy = res.clone();
-            caches.open(CACHE).then(c => c.put('./index.html', copy)).catch(() => {});
-          }
-          return res;
-        }).catch(() => null),
-        new Promise(resolve => setTimeout(() => resolve(null), 2000)),
-      ]).then(res => res || fromCache().then(hit => hit || fetch(req)))
+      caches.open(CACHE).then(c =>
+        c.match(req, { ignoreSearch: true })
+          .then(hit => hit || c.match('./index.html'))
+          .then(hit => hit || c.match('./'))
+          .then(hit => hit || fetch(req)))
     );
     return;
   }
 
   e.respondWith(
     caches.open(CACHE)
-      .then(c => c.match(req, { ignoreSearch: true }))
-      .then(hit => hit || fetch(req).then(res => {
-        if (res && res.ok) {
-          const copy = res.clone();
-          caches.open(CACHE).then(c => c.put(req, copy)).catch(() => {}); // 206 등은 조용히 무시
-        }
-        return res;
+      .then(c => c.match(req, { ignoreSearch: true }).then(hit => {
+        if (hit) return hit;
+        return fetch(req).then(res => {
+          if (res && res.ok) {
+            const copy = res.clone();
+            c.put(req, copy).catch(() => {}); // 206 등은 조용히 무시
+            return res;
+          }
+          // 404·5xx(배포 중 잠깐 깨진 순간 등)에도 캐시가 있으면 그걸 쓴다
+          return c.match(req, { ignoreSearch: true }).then(alt => alt || res);
+        }).catch(() => c.match(req, { ignoreSearch: true }));
       }))
   );
 });
 
-/* 부모 코너의 '최신 버전 받기' — 캐시를 통째로 비우고 다시 받는다 */
+/* 부모 코너의 '최신 버전 받기' — 캐시를 비우고 네트워크에서 새로 받아 채운다.
+   페이지가 그냥 새로고침만 하면 브라우저 HTTP 캐시(GitHub Pages max-age=600)가
+   또 옛 파일을 내주므로, 여기서 cache:'reload'로 확실히 새로 받아 둔다. */
+function precacheFresh() {
+  return caches.open(CACHE).then(c => Promise.all(ASSETS.map(url =>
+    fetch(new Request(url, { cache: 'reload' })).then(res => {
+      if (!res || !res.ok) throw new Error('refresh failed: ' + url);
+      return c.put(url, res);
+    }))));
+}
 self.addEventListener('message', e => {
-  if (!e.data || e.data.type !== 'clear-caches') return;
+  const type = e.data && e.data.type;
+  if (type !== 'refresh' && type !== 'clear-caches') return;
+  const reply = ok => { if (e.source && e.source.postMessage) e.source.postMessage({ type: 'refreshed', ok: ok }); };
   e.waitUntil(
-    caches.keys()
-      .then(keys => Promise.all(keys.map(k => caches.delete(k))))
-      .then(() => { if (e.source && e.source.postMessage) e.source.postMessage({ type: 'caches-cleared' }); })
+    caches.delete(CACHE)
+      .then(() => precacheFresh())
+      .then(() => reply(true))
+      .catch(() => reply(false))
   );
 });

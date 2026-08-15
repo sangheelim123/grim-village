@@ -340,24 +340,53 @@ export function bindGlobalUI(game) {
     audio.setBgm(!audio.bgmOn);
     $('parent-bgm').textContent = audio.bgmOn ? '🎵 배경음악 켜짐' : '🎵 배경음악 꺼짐';
   });
-  /* 최신 버전 받기 — 캐시를 비우고 서비스워커를 새로 등록한 뒤 다시 연다.
-     localStorage(친구·그림)는 건드리지 않는다. */
+  /* 최신 버전 받기 — 안전이 최우선이다.
+     이 버튼은 잘못 만들면 앱을 영구히 못 켜게 만들 수 있다:
+     오프라인에서 캐시를 지우면 다시 받아올 곳이 없어 앱이 사라지고,
+     같은 주소(github.io)를 쓰는 다른 프로젝트의 캐시·워커까지 지울 수 있다.
+     그래서 (1) 인터넷을 실제로 확인하고 (2) 우리 캐시(village-*)만 지우고
+     (3) 서비스워커는 등록을 풀지 않고 갱신만 요청한다. 아이의 저장물은 그대로. */
   const forceBtn = $('btn-force-update');
   if (forceBtn) forceBtn.addEventListener('click', async () => {
-    forceBtn.textContent = '⏳ 받는 중...';
+    if (forceBtn._busy) return; // 연타 방어
+    forceBtn._busy = true;
+    const label = forceBtn.textContent;
+    forceBtn.textContent = '⏳ 확인 중...';
     store.flush();
     try {
-      if ('caches' in window) {
+      // 정말 인터넷이 되는지 실제로 받아 본다 (navigator.onLine은 거짓말을 한다)
+      const probe = await fetch('./index.html?probe=' + Date.now(), { cache: 'no-store' });
+      if (!probe || !probe.ok) throw new Error('offline');
+    } catch (e) {
+      forceBtn.textContent = label;
+      forceBtn._busy = false;
+      ui.toast('📡 인터넷이 연결되면 눌러 주세요');
+      audio.nope();
+      return;
+    }
+    forceBtn.textContent = '⏳ 받는 중...';
+    try {
+      const sw = navigator.serviceWorker;
+      const ctrl = sw && sw.controller;
+      if (ctrl) {
+        // 서비스워커에게 직접 "네트워크에서 새로 받아 채워라"를 시킨다.
+        // (페이지가 캐시만 지우고 새로고침하면 브라우저 HTTP 캐시가 또 옛 파일을 내준다)
+        await new Promise(resolve => {
+          const done = () => { sw.removeEventListener('message', onMsg); resolve(); };
+          const onMsg = ev => { if (ev.data && ev.data.type === 'refreshed') done(); };
+          sw.addEventListener('message', onMsg);
+          setTimeout(done, 20000); // 오래 걸려도 앱을 붙잡아 두지 않는다
+          ctrl.postMessage({ type: 'refresh' });
+        });
+        try { const reg = await sw.getRegistration(); if (reg) { const r = reg.update(); if (r && r.catch) r.catch(() => {}); } } catch (e2) {}
+      } else if ('caches' in window) {
         const keys = await caches.keys();
-        await Promise.all(keys.map(k => caches.delete(k)));
-      }
-      if ('serviceWorker' in navigator) {
-        const regs = await navigator.serviceWorker.getRegistrations();
-        await Promise.all(regs.map(r => r.unregister()));
+        // 우리 캐시만 — 같은 주소의 다른 앱 것을 지우면 안 된다
+        await Promise.all(keys.filter(k => k.startsWith('village-')).map(k => caches.delete(k)));
       }
     } catch (e) {}
-    // 쿼리를 붙여 브라우저 HTTP 캐시까지 확실히 우회한다
-    location.replace(location.pathname + '?v=' + Date.now());
+    try { sessionStorage.removeItem('village-sw-reload'); } catch (e) {}
+    location.reload();
   });
 
   let resetArmed = false;
