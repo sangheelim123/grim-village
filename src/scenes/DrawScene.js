@@ -1,4 +1,6 @@
 import { audio } from '../audio.js';
+import { store } from '../store.js';
+import { normalizeColorStrokes } from '../creature.js';
 import { ui } from '../dom-ui.js';
 import { switchScene } from '../main.js';
 import { DRAW_COLORS, CHAR_COLORS, DRAW_CHEER, RAINBOW, pickVary } from '../config.js';
@@ -134,6 +136,7 @@ export class DrawScene extends Phaser.Scene {
     ui.setActionBar(`${colors}${rainbow}<span style="width:8px"></span>${sizes}
       <button class="act-btn small blue" id="dw-undo">↩️</button>
       <button class="act-btn small blue" id="dw-clear">🗑️</button>
+      <button class="act-btn blue" id="dw-hang">🖼️ 마을에 걸기</button>
       <button class="act-btn" id="dw-hatch">🐣 태어나라!</button>`);
     document.querySelectorAll('.dw-c').forEach(b => b.addEventListener('click', () => {
       this.color = +b.dataset.i; this.showBar(); audio.pop(2);
@@ -155,6 +158,22 @@ export class DrawScene extends Phaser.Scene {
     document.getElementById('dw-clear').addEventListener('click', () => {
       if (this.strokes.length) this.clearedBackup = this.strokes;
       this.strokes = []; this.redraw(); audio.tap();
+    });
+    // 출구가 둘이다: 캐릭터가 되거나(태어나라), 그림 그대로 마을에 남거나(걸기).
+    // 이전에는 태어나라를 누르지 않은 그림이 그냥 사라졌다 — 창작물 보존 원칙의 구멍이었다.
+    document.getElementById('dw-hang').addEventListener('click', () => {
+      if (this.endStroke) this.endStroke();
+      if (this.strokes.length === 0) { ui.guide('먼저 그림을 그려 주세요!'); return; }
+      if (!store.P.arts) store.P.arts = [];
+      store.P.arts.push({ s: normalizeColorStrokes(this.strokes), b: Date.now() });
+      while (store.P.arts.length > 12) store.P.arts.shift();
+      store.save();
+      audio.grow();
+      ui.celebrate({
+        msg: '내 그림이 마을 게시판에 걸렸어요!',
+        speakMsg: '내 그림이 마을 게시판에 걸렸어요! 마을에서 볼 수 있어요!',
+        onAgain: () => { this.strokes = []; this.clearedBackup = null; this.cheered = false; this.redraw(); },
+      });
     });
     document.getElementById('dw-hatch').addEventListener('click', () => {
       if (this.endStroke) this.endStroke(); // 그리고 있던 선도 캐릭터에 포함

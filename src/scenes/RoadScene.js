@@ -1,4 +1,4 @@
-import { addSky, textStyle, confettiBurst } from './common.js';
+import { addSky, addGround, addFlyers, textStyle, confettiBurst } from './common.js';
 import { Tracer, accToStars } from '../tracer.js';
 import { store } from '../store.js';
 import { makeCreatureSprite } from '../creature.js';
@@ -55,9 +55,12 @@ export class RoadScene extends Phaser.Scene {
 
   create() {
     ui.topButtons('play');
-    this.cameras.main.fadeIn(250, 255, 255, 255);
-    this.bg = addSky(this, { clouds: 2 });
-    this.hills = this.add.image(0, 0, 'hills_far').setOrigin(0.5, 1).setDepth(-80).setAlpha(0.8);
+    this.cameras.main.fadeIn(250, 234, 250, 255);
+    this.bg = addSky(this, { clouds: 2, key: 'sky_road' });
+    this.ground = addGround(this, { horizon: 0.86, tufts: 10 });
+    this.birds = addFlyers(this, 2, { key: 'bird', y0: 0.1, y1: 0.26, depth: -85, scale: 0.7, tint: 0xa8c0d8 });
+    this.roadG = this.add.graphics().setDepth(4); // 흙길 바닥 (점선·아이의 선보다 뒤)
+    audio.setMood('play');
 
     const lvl = store.lvlOf('road');
     const { raw, aspect } = roadPath(lvl);
@@ -100,6 +103,7 @@ export class RoadScene extends Phaser.Scene {
       if (this.walkerObj && this.walkerObj.destroyTexture) this.walkerObj.destroyTexture();
     });
 
+    this.drawRoadBed();
     ui.setPill('길을 따라 쭉~ 그어 주세요!');
     audio.speak(this.walkerChar
       ? `${iGa(this.walkerChar.n)} 집에 가고 싶대요! 반짝이는 점부터 깃발까지 선을 그어 주세요!`
@@ -108,15 +112,44 @@ export class RoadScene extends Phaser.Scene {
 
   repeatVoice() { audio.speak('초록 점에서 시작해서 깃발까지 쭉 그어 주세요!'); }
 
+  /* 흙길 리본: 가이드 점선 아래에 실제 '길'을 깐다.
+     리사이즈 때만 다시 그린다 (매 프레임 아님) */
+  drawRoadBed() {
+    const tr = this.tracer, g = this.roadG;
+    // 지평선을 길의 가장 낮은 점 바로 아래로 — 길이 공중에 떠 있지 않게
+    let lowest = 0;
+    for (let i = 0; i < tr.n; i++) lowest = Math.max(lowest, tr.sp(i).y);
+    const h = this.scale.height;
+    this.ground.setHorizon(clamp((lowest + tr.R * 1.15) / h, 0.5, 0.94));
+    this.ground.fit(this.scale.width, h);
+    g.clear();
+    for (const [wMul, col] of [[1.75, 0xe6d3a8], [1.15, 0xf3e6c6]]) {
+      g.lineStyle(tr.R * wMul, col, 1);
+      g.beginPath();
+      g.moveTo(tr.sp(0).x, tr.sp(0).y);
+      for (let i = 1; i < tr.n; i++) g.lineTo(tr.sp(i).x, tr.sp(i).y);
+      g.strokePath();
+    }
+    g.fillStyle(0xd6c49a, 0.9); // 길가 조약돌
+    const step = Math.max(4, Math.round(tr.n / 14));
+    for (let i = step; i < tr.n - 2; i += step) {
+      const a = tr.sp(i), b = tr.sp(i + 2);
+      const nx = -(b.y - a.y), ny = b.x - a.x;
+      const L = Math.hypot(nx, ny) || 1, side = (i / step) % 2 ? 1 : -1;
+      g.fillCircle(a.x + nx / L * tr.R * side, a.y + ny / L * tr.R * side, tr.R * 0.16);
+    }
+  }
+
   onResize() {
     const { width: w, height: h } = this.scale;
-    this.bg.sky.setDisplaySize(w, h);
-    this.hills.setPosition(w / 2, h + 4).setDisplaySize(Math.max(w * 1.05, 800), h * 0.3);
+    this.bg.fit(w, h);
+    this.ground.fit(w, h);
     this.tracer.fit(w, h);
     const end = this.tracer.sp(this.tracer.n - 1);
     this.houseImg.setPosition(end.x + this.tracer.R * 1.9, end.y - this.tracer.R * 0.9);
     this.flagImg.setPosition(end.x, end.y - this.tracer.R * 0.7);
     this.strokeG.clear();
+    this.drawRoadBed();
   }
 
   onDown(p) {
@@ -181,6 +214,7 @@ export class RoadScene extends Phaser.Scene {
     // 무지개 길 + 친구가 폴짝폴짝 달려간다
     this.guideG.clear();
     this.strokeG.clear();
+    this.roadG.clear();
     const rg = this.add.graphics().setDepth(11);
     for (let i = 1; i < tr.n; i++) {
       const a = tr.sp(i - 1), b = tr.sp(i);
@@ -215,7 +249,8 @@ export class RoadScene extends Phaser.Scene {
     });
   }
 
-  update(now) {
+  update(now, delta) {
+    this.bg.step(Math.min(0.05, (delta || 16) / 1000), this.scale.width);
     if (this.state !== 'trace') return;
     const tr = this.tracer;
     const g = this.guideG;

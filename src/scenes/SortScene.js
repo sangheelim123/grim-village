@@ -1,17 +1,19 @@
-import { addSky, textStyle, confettiBurst, sparkleBurst } from './common.js';
+import { addSky, addGround, popIn, textStyle, confettiBurst, sparkleBurst } from './common.js';
 import { accToStars } from '../tracer.js';
 import { store } from '../store.js';
 import { audio } from '../audio.js';
 import { ui } from '../dom-ui.js';
-import { SORT_COLORS, SORT_SHAPES, rand, pick, clamp } from '../config.js';
+import { SORT_COLORS, SORT_SHAPES, SORT_YES, rand, pick, pickVary, clamp } from '../config.js';
 
 export class SortScene extends Phaser.Scene {
   constructor() { super('Sort'); }
 
   create() {
     ui.topButtons('play');
-    this.cameras.main.fadeIn(250, 255, 255, 255);
-    this.bg = addSky(this, { clouds: 2 });
+    this.cameras.main.fadeIn(250, 240, 236, 250);
+    this.bg = addSky(this, { clouds: 2, key: 'sky_sort' });
+    this.ground = addGround(this, { horizon: 0.74, tufts: 9 });
+    audio.setMood('play');
     this.bg.sky.setTint(0xe8ddff);
 
     const lvl = store.lvlOf('sort');
@@ -97,7 +99,8 @@ export class SortScene extends Phaser.Scene {
 
   layout() {
     const { width: w, height: h } = this.scale;
-    this.bg.sky.setDisplaySize(w, h);
+    this.bg.fit(w, h);
+    this.ground.fit(w, h);
     this.progStars.forEach((s, i) => {
       s.setPosition(w / 2 - (this.total - 1) * 16 + i * 32, 96);
     });
@@ -166,7 +169,7 @@ export class SortScene extends Phaser.Scene {
           store.save();
           sparkleBurst(this, p.x, p.y, 12);
           audio.pop(this.done + 2);
-          audio.speak(pick(['딩동댕!', '맞아요!', '잘했어요!']), { pri: 2 });
+          audio.speak(pickVary(SORT_YES), { pri: 2 });
           this.progStars[this.done - 1].setAlpha(1);
           this.tweens.add({ targets: this.progStars[this.done - 1], scale: 0.34, duration: 240, yoyo: true });
           this.tweens.add({
@@ -180,7 +183,7 @@ export class SortScene extends Phaser.Scene {
           // 오답 = 자기소개 (배움의 순간, 벌점 없음)
           const say = `나는 ${candy.colData.name} ${candy.shpData.name}야~!`;
           audio.speak(say, { pri: 1 });
-          audio.boing();
+          audio.nope();
           this.showSay(candy.x, candy.y - candy.displayHeight, say);
           this.tweens.add({
             targets: candy,
@@ -216,7 +219,7 @@ export class SortScene extends Phaser.Scene {
       this.ruleSwitched = true;
       this.setRule(this.rule === 'color' ? 'shape' : 'color', 3);
       this.buildBaskets();
-      const msg = this.rule === 'color' ? '규칙이 바뀌었어요! 이번엔 색깔로 나눠요!' : '규칙이 바뀌었어요! 이번엔 모양으로 나눠요!';
+      const msg = this.rule === 'color' ? '이번엔 놀이가 바뀌어요! 이번엔 색깔로 나눠요!' : '이번엔 놀이가 바뀌어요! 이번엔 모양으로 나눠요!';
       ui.setPill(this.rule === 'color' ? '이번엔 색깔로!' : '이번엔 모양으로!');
       audio.speak(msg);
     }
@@ -240,6 +243,7 @@ export class SortScene extends Phaser.Scene {
   }
 
   update(now, dt) {
+    this.bg.step(Math.min(0.05, (dt || 16) / 1000), this.scale.width);
     if (!this.candyObj && this.done < this.total && now > this.spawnAt) {
       this.spawnCandy();
       this.spawnAt = now + 700;

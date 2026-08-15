@@ -50,6 +50,16 @@ function bakeFishTexture(scene, fish) {
   c.save();
   c.scale(2.56, 2.56);
   c.lineCap = 'round'; c.lineJoin = 'round';
+  // 흰 밑선 먼저 — 어떤 물빛에서도 아이가 그린 물고기가 배경에 묻히지 않는다
+  c.strokeStyle = 'rgba(255,255,255,0.85)';
+  for (const s of fish.s) {
+    if (!s.p || s.p.length < 2) continue;
+    c.lineWidth = ([3.5, 6, 10][s.w] || 6) + 4;
+    c.beginPath();
+    c.moveTo(s.p[0][0], s.p[0][1]);
+    for (let i = 1; i < s.p.length; i++) c.lineTo(s.p[i][0], s.p[i][1]);
+    c.stroke();
+  }
   for (const s of fish.s) {
     if (!s.p || s.p.length < 1) continue;
     c.lineWidth = [3.5, 6, 10][s.w] || 6;
@@ -76,7 +86,7 @@ export class AquaScene extends Phaser.Scene {
 
   create() {
     ui.topButtons('play');
-    this.cameras.main.fadeIn(250, 255, 255, 255);
+    this.cameras.main.fadeIn(250, 26, 110, 168);
     const saved = store.P.aqua || [];
 
     // ---- 어항 배경 (그라데이션 물 + 모래 + 물풀 + 공기방울) ----
@@ -116,6 +126,7 @@ export class AquaScene extends Phaser.Scene {
     this.input.on('pointerup', p => this.onUp(p));
     this.input.on('pointerupoutside', p => this.onUp(p));
 
+    audio.setMood('water');
     this.layout();
     this.scale.on('resize', this.layout, this);
     this.events.once('shutdown', () => {
@@ -467,14 +478,18 @@ export class AquaScene extends Phaser.Scene {
 
     this.paper.setSize(w, h);
     this.bubbleEm.setPosition(0, h * 0.98);
+    try {
+      this.bubbleEm.ops.x.onChange(0, w); // 고정 4000px 범위면 좁은 화면에서 90%가 밖에 생긴다
+      this.bubbleEm.ops.speedY.onChange(-h * 0.13, -h * 0.06);
+    } catch (e) {}
     // 물: 위는 밝고 아래로 깊어지는 파랑 + 모래바닥
     const g = this.waterG;
     g.clear();
-    g.fillGradientStyle(0x2a8ac8, 0x2a8ac8, 0x0a3a6a, 0x0a3a6a, 1);
+    g.fillGradientStyle(0x5ec4ee, 0x5ec4ee, 0x1f6ea8, 0x1f6ea8, 1);
     g.fillRect(0, 0, w, h);
-    g.fillStyle(0xd8c48a, 1);
+    g.fillStyle(0xefe0b0, 1);
     g.fillRect(0, h * 0.94, w, h * 0.06);
-    g.fillStyle(0xc4b078, 1);
+    g.fillStyle(0xdbc894, 1);
     for (let i = 0; i < 5; i++) {
       const rx = (Math.sin(i * 87.7) * 0.5 + 0.5) * w;
       g.fillEllipse(rx, h * 0.945, w * 0.06 + i * 8, 14);

@@ -1,4 +1,4 @@
-import { addSky, sparkleBurst, confettiBurst, textStyle, pressify } from './common.js';
+import { addSky, addGround, popIn, sparkleBurst, confettiBurst, textStyle, pressify } from './common.js';
 import { Tracer, MultiTracer, tracerParts, resamplePath, accToStars } from '../tracer.js';
 import { store, newCreature, normalizeStrokes, nameCandidates } from '../store.js';
 import { makeCreatureSprite } from '../creature.js';
@@ -27,7 +27,7 @@ const SHAPES = {
     }
     return pts;
   } },
-  oval: { name: '타원', voice: '길쭉길쭉 타원', gen: () => {
+  oval: { name: '길쭉 동그라미', voice: '길쭉길쭉 길쭉 동그라미', gen: () => {
     const pts = [];
     for (let i = 0; i <= 72; i++) {
       const a = -Math.PI / 2 + (i / 72) * Math.PI * 2;
@@ -39,7 +39,7 @@ const SHAPES = {
     [[0.5, 0.08], [0.92, 0.88], [0.08, 0.88], [0.5, 0.08]].map(p => ({ x: p[0], y: p[1] })) },
   square: { name: '네모', voice: '반듯반듯 네모', gen: () =>
     [[0.12, 0.12], [0.88, 0.12], [0.88, 0.88], [0.12, 0.88], [0.12, 0.12]].map(p => ({ x: p[0], y: p[1] })) },
-  drop: { name: '물방울', voice: '똑똑 물방울', gen: () => {
+  drop: { name: '물방울', voice: '또르르 물방울', gen: () => {
     const pts = [{ x: 0.5, y: 0.08 }];
     for (let i = 0; i <= 10; i++) { // 오른쪽 곡선
       const t = i / 10;
@@ -59,7 +59,7 @@ const SHAPES = {
     }
     return pts;
   } },
-  heart: { name: '하트', voice: '사랑사랑 하트', gen: () => {
+  heart: { name: '하트', voice: '두근두근 하트', gen: () => {
     const pts = [];
     for (let i = 0; i <= 80; i++) {
       const t = (i / 80) * Math.PI * 2;
@@ -70,9 +70,9 @@ const SHAPES = {
     }
     return normPts(pts);
   } },
-  diamond: { name: '다이아몬드', voice: '반짝반짝 다이아몬드', gen: () =>
+  diamond: { name: '다이아몬드', voice: '번쩍번쩍 다이아몬드', gen: () =>
     [[0.5, 0.06], [0.88, 0.5], [0.5, 0.94], [0.12, 0.5], [0.5, 0.06]].map(p => ({ x: p[0], y: p[1] })) },
-  semi: { name: '반원', voice: '둥근 반원', gen: () => {
+  semi: { name: '반달', voice: '봉긋 반달', gen: () => {
     const pts = [];
     for (let i = 0; i <= 40; i++) {
       const a = Math.PI - (i / 40) * Math.PI;
@@ -90,7 +90,7 @@ const SHAPES = {
     return pts;
   } },
   /* 다획 도형 — gen()이 획 배열을 돌려준다 (multi: true). 획 순서·방향 자유 */
-  cross: { name: '십자', voice: '반듯반듯 십자', multi: true, gen: () => [
+  cross: { name: '더하기', voice: '쭉쭉 더하기', multi: true, gen: () => [
     [{ x: 0.5, y: 0.08 }, { x: 0.5, y: 0.92 }],
     [{ x: 0.08, y: 0.5 }, { x: 0.92, y: 0.5 }],
   ] },
@@ -145,12 +145,15 @@ export class EggScene extends Phaser.Scene {
 
   create() {
     ui.topButtons('play');
-    this.cameras.main.fadeIn(250, 255, 255, 255);
-    this.bg = addSky(this, { clouds: 2 });
-    this.bg.sky.setTint(0xffe8f0);
+    this.cameras.main.fadeIn(250, 255, 232, 240);
+    this.bg = addSky(this, { clouds: 2, key: 'sky_egg' });
 
+    this.ground = addGround(this, { horizon: 0.8, tufts: 6 });
     this.nestImg = this.add.image(0, 0, 'nest').setDepth(4);
+    this.glowImg = this.add.image(0, 0, 'glow').setDepth(3);
+    this.tweens.add({ targets: this.glowImg, scale: '*=1.06', alpha: 0.75, duration: 2400, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     this.eggImg = this.add.image(0, 0, 'egg_big').setDepth(5);
+    audio.setMood('play');
     this.guideG = this.add.graphics().setDepth(10);
     this.strokeG = this.add.graphics().setDepth(12);
     this.sampleG = this.add.graphics().setDepth(10);
@@ -195,8 +198,8 @@ export class EggScene extends Phaser.Scene {
 
   repeatVoice() {
     if (this.state === 'pick') audio.speak('그리고 싶은 도형을 골라 주세요!');
-    else if (this.state === 'decorate') audio.speak('색과 눈과 무늬를 골라 주세요!');
-    else if (this.state === 'soul') audio.speak('성격과 이름을 골라 주세요!');
+    else if (this.state === 'decorate') audio.speak('색깔이랑, 눈이랑, 무늬를 골라 봐요!');
+    else if (this.state === 'soul') audio.speak('마음이랑 이름을 골라 봐요!');
     else if (this.shape) audio.speak(`${eulRl(this.shape.voice)} 알 위에 그려 주세요!`);
   }
 
@@ -277,10 +280,10 @@ export class EggScene extends Phaser.Scene {
     audio.pop(3);
     ui.setPill(`${eulRl(this.shape.name)} 그려 봐요!`);
     audio.speak(this.guided
-      ? `${this.shape.voice}! 점선을 따라 알 위에 그려 주세요!`
+      ? `${this.shape.voice}! 점선을 따라, 알 위에 그려 봐요!`
       : this.memoryMode
-        ? `${this.shape.voice}! 견본을 잘 기억해 두세요! 조금 있다가 숨을 거예요!`
-        : `${this.shape.voice}! 견본을 보고 알 위에 그려 주세요!`);
+        ? `${this.shape.voice}! 이 모양을 잘 봐 두세요! 조금 있다가 살짝 숨길게요!`
+        : `${this.shape.voice}! 옆에 있는 모양을 보고, 알 위에 그려 봐요!`);
     this.showDoneBtn();
     this.layout();
   }
@@ -291,7 +294,7 @@ export class EggScene extends Phaser.Scene {
     this.sampleHidden = true;
     this.layout();
     audio.pop(2);
-    audio.speak('이제 기억해서 그려 봐요! 궁금하면 눈 버튼을 눌러요!', { pri: 1 });
+    audio.speak('이제 기억해서 그려 봐요! 다시 보고 싶으면, 눈 그림을 눌러요!', { pri: 1 });
   }
   peekSample() {
     if (this.state !== 'trace' || !this.memoryMode || !this.sampleHidden) return;
@@ -305,7 +308,10 @@ export class EggScene extends Phaser.Scene {
     const { width: w, height: h } = this.scale;
     this.bg.sky.setDisplaySize(w, h);
     const m = Math.min(w, h);
+    this.bg.fit(w, h);
+    this.ground.fit(w, h);
     this.eggImg.setPosition(w / 2, h / 2 + 8).setScale(m * 0.0021);
+    this.glowImg.setPosition(w / 2, h / 2 + 8).setScale(m * 0.0075);
     this.nestImg.setPosition(w / 2, h / 2 + this.eggImg.displayHeight * 0.44).setScale(m * 0.0019);
     if (this.tracer) {
       // 회전·리사이즈 시 그리던 획을 가이드의 새 위치·크기로 함께 옮긴다
@@ -482,7 +488,7 @@ export class EggScene extends Phaser.Scene {
       : this.acc >= TUNING.starAcc[1] ? TRACE_PRAISE.hi
         : this.acc >= TUNING.starAcc[0] ? TRACE_PRAISE.mid : TRACE_PRAISE.low;
     // 효과음과 겹치지 않게 살짝 늦게 발화
-    setTimeout(() => audio.speak(`멋진 ${this.shape.name}! ${pickVary(pool)} 이제 색과 눈과 무늬를 골라요!`, { pri: 1 }), 350);
+    setTimeout(() => audio.speak(`멋진 ${this.shape.name}! ${pickVary(pool)} 이제 색깔이랑 눈이랑 무늬를 골라 봐요!`, { pri: 1 }), 350);
   }
 
   /* 견본 모드의 다획 도형(엑스·집): 시작-끝 닫힘 휴리스틱은 열린 획을 부당하게
@@ -547,7 +553,7 @@ export class EggScene extends Phaser.Scene {
     this.samplePanel.setVisible(false);
     this.hintHand.setAlpha(0);
     ui.setPill('어떤 모습일까요?');
-    if (this.fromDraw) audio.speak('색과 눈과 무늬를 골라 주세요!');
+    if (this.fromDraw) audio.speak('색깔이랑, 눈이랑, 무늬를 골라 봐요!');
     this.refreshPreview();
     this.showLookBar();
   }
@@ -589,7 +595,7 @@ export class EggScene extends Phaser.Scene {
   enterSoul() {
     this.state = 'soul';
     ui.setPill('어떤 친구일까요?');
-    audio.speak('성격과 이름을 골라 주세요!');
+    audio.speak('마음이랑 이름을 골라 봐요!');
     audio.pop(5);
     this.showSoulBar();
   }
@@ -668,6 +674,7 @@ export class EggScene extends Phaser.Scene {
       },
       onComplete: () => {
         sparkleBurst(this, this.eggImg.x, this.eggImg.y, 10);
+        this.tweens.add({ targets: this.glowImg, scale: this.glowImg.scale * 1.8, alpha: 0, duration: 700 });
         this.tweens.add({ targets: rg, alpha: 0, duration: 450, onComplete: () => rg.destroy() });
         audio.hatch();
         this.startHatchShake();
@@ -706,7 +713,8 @@ export class EggScene extends Phaser.Scene {
     });
   }
 
-  update(now) {
+  update(now, delta) {
+    this.bg.step(Math.min(0.05, (delta || 16) / 1000), this.scale.width);
     if (this.state !== 'trace' || !this.tracer) {
       if (this.hintHand) this.hintHand.setAlpha(0);
       return;
@@ -723,9 +731,9 @@ export class EggScene extends Phaser.Scene {
           g.fillStyle(0xff6b9a, 1);
           g.fillCircle(p.x, p.y, dotR * 1.2);
         } else {
-          g.fillStyle(0xffffff, 0.95);
+          g.fillStyle(0xfdfaff, 0.92);
           g.fillCircle(p.x, p.y, dotR);
-          g.lineStyle(2, 0x000000, 0.13);
+          g.lineStyle(3, 0x8fa8c8, 0.6); // 알(#fffdf2) 위에서도 보이는 대비
           g.strokeCircle(p.x, p.y, dotR);
         }
       }

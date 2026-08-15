@@ -1,19 +1,20 @@
-import { addSky, textStyle, confettiBurst, sparkleBurst } from './common.js';
+import { addSky, addGround, popIn, textStyle, confettiBurst, sparkleBurst } from './common.js';
 import { accToStars } from '../tracer.js';
 import { store } from '../store.js';
 import { makeCreatureSprite } from '../creature.js';
 import { audio } from '../audio.js';
 import { ui } from '../dom-ui.js';
-import { FRUITS, KOR_NUM, eulRl, rand, pick, clamp } from '../config.js';
+import { FRUITS, KOR_NUM, eulRl, iGa, iGaN, egeNm, gae, rand, pick, clamp } from '../config.js';
 
 export class FeedScene extends Phaser.Scene {
   constructor() { super('Feed'); }
 
   create(data) {
     ui.topButtons('play');
-    this.cameras.main.fadeIn(250, 255, 255, 255);
-    this.bg = addSky(this, { clouds: 2 });
-    this.bg.sky.setTint(0xe8ffe0);
+    this.cameras.main.fadeIn(250, 255, 240, 220);
+    this.bg = addSky(this, { clouds: 2, key: 'sky_feed' });
+    this.ground = addGround(this, { horizon: 0.7, tufts: 8, tint: 0x8fd873 });
+    audio.setMood('play');
     this.treeImg = this.add.image(0, 0, 'tree').setDepth(2);
     this.plateImg = this.add.image(0, 0, 'plate').setDepth(3);
     this.bubbleImg = this.add.image(0, 0, 'bubble').setDepth(8);
@@ -126,15 +127,15 @@ export class FeedScene extends Phaser.Scene {
       const [a, b] = this.addParts;
       const fn = this.request[0].fruit.name;
       ui.setPill(`${fn} ${a}개랑 ${b}개 주세요!`);
-      audio.speak(`${nm}가 배가 고프대요! ${fn} ${a}개랑, ${b}개 더 접시에 담아 주세요! 모두 몇 개가 될까요?`);
+      audio.speak(`${iGa(nm)} 배가 고프대요! ${fn} ${gae(a)}랑, ${gae(b)} 더 담아 주세요! 모두 몇 개가 될까요?`);
     } else if (mode === 'sub') {
       const fn = this.request[0].fruit.name;
       ui.setPill(`${takerNm}에게 ${this.subTake}개 나눠 주세요!`);
-      audio.speak(`${fn}가 ${this.subTotal}개 있어요! ${takerNm}가 ${this.subTake}개 먹고 싶대요. 접시의 ${eulRl(fn)} 눌러서 ${this.subTake}개 나눠 주세요!`);
+      audio.speak(`${iGaN(fn)} ${gae(this.subTotal)} 있어요! ${iGa(takerNm)} ${gae(this.subTake)} 먹고 싶대요. 접시의 ${eulRl(fn)} 눌러서, ${gae(this.subTake)}만 나눠 주세요!`);
     } else {
       const reqText = this.request.map(r => `${r.fruit.name} ${r.count}개`).join('랑 ');
       ui.setPill(`${reqText} 주세요!`);
-      audio.speak(`${nm}가 배가 고프대요! ${reqText} 주세요!`);
+      audio.speak(`${iGa(nm)} 배가 고프대요! ${reqText} 주세요!`);
     }
     ui.setActionBar('<button class="act-btn" id="feed-done">🍽️ 다 줬어요!</button>');
     document.getElementById('feed-done').addEventListener('click', () => this.checkPlate());
@@ -143,6 +144,7 @@ export class FeedScene extends Phaser.Scene {
     this.input.on('pointerdown', p => this.onTapPlate(p));
 
     this.layout();
+    popIn(this, [this.treeImg, this.plateImg, this.eaterObj, this.takerObj, this.bubbleImg]);
     this.scale.on('resize', this.layout, this);
     this.events.once('shutdown', () => {
       this.scale.off('resize', this.layout, this);
@@ -151,15 +153,19 @@ export class FeedScene extends Phaser.Scene {
     });
   }
 
+  update(now, delta) {
+    this.bg.step(Math.min(0.05, (delta || 16) / 1000), this.scale.width);
+  }
+
   repeatVoice() {
     const fn = this.request[0].fruit.name;
     if (this.mode === 'add') {
-      audio.speak(`${fn} ${this.addParts[0]}개랑 ${this.addParts[1]}개를 접시에 담아 주세요!`);
+      audio.speak(`${fn} ${gae(this.addParts[0])}랑 ${gae(this.addParts[1])} 접시에 담아 주세요!`);
     } else if (this.mode === 'sub') {
       const takerNm = this.takerChar ? this.takerChar.n : '별동이';
       const left = this.subTake - this.takerTaken;
       audio.speak(left > 0
-        ? `접시의 ${eulRl(fn)} 눌러서 ${takerNm}에게 ${left}개 더 나눠 주세요!`
+        ? `접시의 ${eulRl(fn)} 눌러서 ${egeNm(takerNm)} ${gae(left)} 더 나눠 주세요!`
         : '이제 남은 과일을 다 줬어요 버튼으로 주세요!');
     } else {
       audio.speak(this.request.map(r => `${r.fruit.name} ${r.count}개`).join('랑 ') + ' 주세요!');
@@ -169,7 +175,8 @@ export class FeedScene extends Phaser.Scene {
   layout() {
     const { width: w, height: h } = this.scale;
     const m = Math.min(w, h);
-    this.bg.sky.setDisplaySize(w, h);
+    this.bg.fit(w, h);
+    this.ground.fit(w, h);
     this.treeImg.setPosition(w * 0.24, h * 0.42).setScale(clamp(m * 0.0013, 0.5, 1.1));
     this.plateImg.setPosition(w * 0.5, h * 0.8).setScale(clamp(m * 0.001, 0.55, 1));
     if (this.takerObj) this.takerObj.setPosition(w * 0.18, h * 0.72);
@@ -253,7 +260,9 @@ export class FeedScene extends Phaser.Scene {
     if (match) {
       const cnt = this.plate.filter(p => p.fruitKey === img.fruitKey).length +
         this.treeFruits.filter(f => f.inFlight && f.fruitKey === img.fruitKey).length;
-      audio.speak(KOR_NUM[cnt - 1] || String(cnt), { pri: 1 });
+      const need = this.request.find(r => r.fruit.key === img.fruitKey);
+      if (need && cnt === need.count) audio.speak(`${KOR_NUM[cnt - 1]}! ${gae(cnt)} 다 담았어요!`, { pri: 1 });
+      else audio.speak(KOR_NUM[cnt - 1] || String(cnt), { pri: 1 });
     }
     this.tweens.add({
       targets: img, x: slot.x, y: slot.y, scale: img.scale * 0.85, duration: 340, ease: 'Quad.easeInOut',
@@ -298,6 +307,7 @@ export class FeedScene extends Phaser.Scene {
     if (this.takerTaken >= this.subTake) {
       audio.boing();
       ui.guide(`${takerNm}는 ${this.subTake}개면 충분하대요!`);
+      audio.nope();
       this.tweens.add({
         targets: this.takerObj, angle: { from: -8, to: 8 }, duration: 100, yoyo: true, repeat: 3,
         onComplete: () => this.takerObj.setAngle(0),
@@ -321,7 +331,7 @@ export class FeedScene extends Phaser.Scene {
       const nm = this.eaterChar ? this.eaterChar.n : '별님이';
       this.time.delayedCall(700, () => {
         if (this.state === 'play' && this.scene.isActive()) {
-          audio.speak(`${takerNm}가 고맙대요! 남은 과일은 몇 개일까요? 다 줬어요 버튼으로 ${nm}에게 주세요!`, { pri: 1 });
+          audio.speak(`${iGa(takerNm)} 고맙대요! 남은 과일은 몇 개일까요? 다 줬어요 버튼으로 ${egeNm(nm)} 주세요!`, { pri: 1 });
         }
       });
     }
@@ -372,13 +382,19 @@ export class FeedScene extends Phaser.Scene {
       this.time.delayedCall(850, () => this.recountTick());
       return;
     }
+    if (mine.length) {
+      // 기수 원리: 마지막에 센 수가 곧 전체의 양이라는 것 — 세고 나서 총량을 되짚어 준다
+      audio.speak(`모두 ${gae(mine.length)}! ${target.fruit.name}가 ${mine.length}개예요!`, { pri: 1 });
+    }
     const diff = target.count - mine.length;
     if (diff > 0) {
       this.state = 'play';
       ui.guide(`${target.fruit.name} ${diff}개 더 주세요!`);
+      audio.speak(`${target.fruit.name} ${gae(diff)} 더 주세요!`);
     } else if (diff < 0) {
       this.state = 'play';
       ui.guide(`${target.fruit.name}가 너무 많아요! 접시를 눌러 빼요!`);
+      audio.speak(`${iGaN(target.fruit.name)} 너무 많아요! 접시를 눌러서 빼 볼까요?`);
     } else if (this.recountReq < this.request.length - 1) {
       this.recountReq++;
       this.recountI = 0;
@@ -390,6 +406,7 @@ export class FeedScene extends Phaser.Scene {
       if (extra) {
         const name = FRUITS.find(f => f.key === extra.fruitKey).name;
         ui.guide(`${name}는 부탁 안 했어요! 접시를 눌러 빼요!`);
+        audio.speak(`어? ${iGaN(name)} 아니에요! 접시를 눌러서 빼 볼까요?`);
         this.tweens.add({ targets: extra, angle: { from: -14, to: 14 }, duration: 110, yoyo: true, repeat: 4 });
       } else ui.guide('좋아요! 다 줬어요 버튼을 눌러 봐요!');
     }
@@ -407,8 +424,8 @@ export class FeedScene extends Phaser.Scene {
     let growMsg = '';
     if (this.eaterChar) {
       this.eaterChar.f++;
-      if (this.eaterChar.f === 3 && this.eaterChar.g < 1) { this.eaterChar.g = 1; growMsg = `${this.eaterChar.n}가 무럭무럭 자랐어요!`; }
-      if (this.eaterChar.f === 8 && this.eaterChar.g < 2) { this.eaterChar.g = 2; growMsg = `${this.eaterChar.n}가 어른이 되었어요!`; }
+      if (this.eaterChar.f === 3 && this.eaterChar.g < 1) { this.eaterChar.g = 1; growMsg = `${iGa(this.eaterChar.n)} 무럭무럭 자랐어요!`; }
+      if (this.eaterChar.f === 8 && this.eaterChar.g < 2) { this.eaterChar.g = 2; growMsg = `${iGa(this.eaterChar.n)} 어른이 되었어요!`; }
     }
     store.save();
 
@@ -434,7 +451,9 @@ export class FeedScene extends Phaser.Scene {
       });
     });
     const danceDelay = this.plate.length * 120 + 400;
+    const totalEaten = this.plate.length;
     this.time.delayedCall(danceDelay, () => {
+      if (totalEaten) audio.speak(`모두 ${gae(totalEaten)}, 다 먹었어요!`, { pri: 1 });
       if (growMsg) {
         audio.grow();
         this.tweens.add({ targets: this.eaterObj, scale: 1.25, duration: 600, ease: 'Back.easeOut' });
@@ -444,7 +463,7 @@ export class FeedScene extends Phaser.Scene {
       confettiBurst(this, this.scale.width / 2, this.scale.height * 0.3);
       this.time.delayedCall(1100, () => {
         if (this._switching) return;
-        const baseMsg = growMsg || (this.eaterChar ? `${this.eaterChar.n}가 배불러서 춤을 춰요!` : '별님이가 배불러요!');
+        const baseMsg = growMsg || (this.eaterChar ? `${iGa(this.eaterChar.n)} 배불러서 춤을 춰요!` : '별님이가 배불러요!');
         ui.celebrate({
           stars,
           char: this.eaterChar || null,

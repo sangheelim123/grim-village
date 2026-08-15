@@ -1,4 +1,4 @@
-import { CHAR_COLORS, CHAR_DARK, rand } from './config.js';
+import { CHAR_COLORS, CHAR_DARK, DRAW_COLORS, rand } from './config.js';
 import { creatureSize } from './store.js';
 
 /* ==========================================================================
@@ -181,6 +181,64 @@ export function drawCreatureReplay(c, char, x, y, size, progress) {
 }
 
 /* ---------- 눈 텍스처 (공용 3종) ---------- */
+/* ---------- 색 보존 그림 (그림 놀이터 갤러리 · 수족관 물고기 공용) ----------
+   아이가 고른 색과 붓 굵기를 그대로 간직한 스트로크 포맷: {c, w, h, p[[x,y]…]} */
+export function normalizeColorStrokes(strokes) {
+  let minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
+  for (const s of strokes) for (const q of s.pts) {
+    minX = Math.min(minX, q[0]); minY = Math.min(minY, q[1]);
+    maxX = Math.max(maxX, q[0]); maxY = Math.max(maxY, q[1]);
+  }
+  const w = Math.max(8, maxX - minX), h = Math.max(8, maxY - minY);
+  const sc = 88 / Math.max(w, h); // 6~94 여백 — 굵은 붓 끝이 가장자리에서 잘리지 않게
+  const ox = (100 - w * sc) / 2, oy = (100 - h * sc) / 2;
+  return strokes.slice(0, 24).map(s => {
+    const n = Math.min(40, s.pts.length);
+    const p = [];
+    for (let i = 0; i < n; i++) {
+      const q = s.pts[Math.floor(i * (s.pts.length - 1) / Math.max(1, n - 1))];
+      p.push([Math.round((q[0] - minX) * sc + ox), Math.round((q[1] - minY) * sc + oy)]);
+    }
+    return { c: s.c, w: s.w, h: s.h0 || 0, p };
+  });
+}
+export function artSegColor(stroke, i, rainbowIdx) {
+  if (stroke.c !== rainbowIdx) return DRAW_COLORS[stroke.c] || '#4a3f35';
+  return `hsl(${(stroke.h + i * 5) % 360}, 85%, 55%)`;
+}
+/* 0~100 좌표계 그림을 2D 컨텍스트에 그린다. upto를 주면 그린 순서대로 일부만 (리플레이) */
+export function drawArt2D(c, art, x, y, size, upto) {
+  const strokes = art.s || [];
+  const total = strokes.reduce((a, s) => a + s.p.length, 0);
+  const limit = upto == null ? total : Math.max(1, Math.floor(total * upto));
+  c.save();
+  c.translate(x - size / 2, y - size / 2);
+  c.scale(size / 100, size / 100);
+  c.lineCap = 'round'; c.lineJoin = 'round';
+  let n = 0;
+  for (const s of strokes) {
+    if (!s.p || !s.p.length || n >= limit) break;
+    c.lineWidth = [2.2, 3.8, 6.4][s.w] || 3.8;
+    c.beginPath();
+    c.moveTo(s.p[0][0], s.p[0][1]);
+    let drew = 0;
+    for (let i = 1; i < s.p.length && n + i < limit; i++) {
+      c.strokeStyle = artSegColor(s, i, DRAW_COLORS.length);
+      c.lineTo(s.p[i][0], s.p[i][1]);
+      c.stroke();
+      c.beginPath();
+      c.moveTo(s.p[i][0], s.p[i][1]);
+      drew = i;
+    }
+    if (!drew) { // 점 하나짜리 획
+      c.fillStyle = artSegColor(s, 0, DRAW_COLORS.length);
+      c.beginPath(); c.arc(s.p[0][0], s.p[0][1], c.lineWidth / 2, 0, Math.PI * 2); c.fill();
+    }
+    n += s.p.length;
+  }
+  c.restore();
+}
+
 export function bakeEyeTextures(scene) {
   const mk = (key, draw) => {
     if (scene.textures.exists(key)) return;

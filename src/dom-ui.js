@@ -2,8 +2,8 @@
    (게임 월드는 Phaser, 메뉴성 UI는 DOM — 검증된 v3 UX를 그대로 계승) */
 import { audio } from './audio.js';
 import { store } from './store.js';
-import { drawCreature2D, drawCreatureReplay } from './creature.js';
-import { PRAISES, PERSONALITIES, VERSION, pickVary, eunNeun } from './config.js';
+import { drawCreature2D, drawCreatureReplay, drawArt2D } from './creature.js';
+import { PRAISES, PERSONALITIES, VERSION, LEVEL_DESC, AREA_NAME, HOME_TIPS, pickVary, eunNeun } from './config.js';
 
 const $ = id => document.getElementById(id);
 
@@ -20,7 +20,7 @@ let gameRef = null;
    손가락이 그 아래 놀이 섬 간판까지 함께 눌러 엉뚱한 씬으로 넘어간다 (실기기 확인). */
 export function refreshInputGate() {
   if (!gameRef) return;
-  const blocked = !!document.querySelector('#parent.show, #book.show, #celebrate.show');
+  const blocked = !!document.querySelector('#parent.show, #book.show, #gallery.show, #celebrate.show');
   try {
     gameRef.input.enabled = !blocked;
     if (gameRef.canvas) gameRef.canvas.style.pointerEvents = blocked ? 'none' : '';
@@ -45,7 +45,7 @@ function closeOverlay(id) {
   }
 }
 function hideAllOverlays() {
-  document.querySelectorAll('#parent.show, #book.show').forEach(el => el.classList.remove('show'));
+  document.querySelectorAll('#parent.show, #book.show, #gallery.show').forEach(el => el.classList.remove('show'));
   refreshInputGate();
 }
 
@@ -77,7 +77,8 @@ export const ui = {
     $('btn-voice').classList.toggle('show', mode === 'play');
     $('btn-profile').classList.toggle('show', mode === 'village');
     $('btn-book').classList.toggle('show', mode === 'village');
-    $('btn-gear').classList.toggle('show', mode === 'village');
+    // 기어는 첫 화면에서도 보인다 — 부모가 설정에 닿으려고 마을까지 들어갈 필요는 없다
+    $('btn-gear').classList.toggle('show', mode === 'village' || mode === 'none');
   },
 
   /* ---- 축하 ---- */
@@ -163,6 +164,40 @@ export const ui = {
     openOverlay('book');
     audio.pop(3);
   },
+  /* ---- 그림 게시판 (그림 놀이터에서 건 그림) ---- */
+  openGallery() {
+    const grid = $('gallery-grid');
+    grid.innerHTML = '';
+    const arts = (store.P.arts || []).slice().reverse();
+    $('gallery-empty').style.display = arts.length ? 'none' : 'block';
+    $('gallery-sub').textContent = arts.length ? `그림 ${arts.length}장 · 그림을 누르면 다시 그려져요` : '';
+    for (const art of arts) {
+      const cv = document.createElement('canvas');
+      cv.width = 106; cv.height = 106;
+      drawArt2D(cv.getContext('2d'), art, 53, 53, 100);
+      cv.addEventListener('click', () => this.playArtReplay(cv, art));
+      grid.appendChild(cv);
+    }
+    openOverlay('gallery');
+    audio.pop(3);
+  },
+  playArtReplay(cv, art) {
+    if (cv._replaying) return;
+    cv._replaying = true;
+    audio.pop(2);
+    const c2 = cv.getContext('2d');
+    const t0 = performance.now();
+    const DUR = 1600;
+    const step = now => {
+      const t = Math.min(1, (now - t0) / DUR);
+      c2.clearRect(0, 0, 106, 106);
+      drawArt2D(c2, art, 53, 53, 100, t);
+      if (t < 1) requestAnimationFrame(step);
+      else { cv._replaying = false; audio.star(2); }
+    };
+    requestAnimationFrame(step);
+  },
+
   playReplay(cv, char) {
     if (cv._replaying) return;
     cv._replaying = true;
@@ -190,6 +225,18 @@ export const ui = {
     $('parent-stats').innerHTML =
       `오늘 놀이 시간: <b>${m}분</b> · 완료한 활동: <b>${P.stats.plays}회</b><br>` +
       `마을 친구: <b>${P.chars.length}명</b> · 모은 별: <b>⭐ ${store.totalStars()}</b>`;
+    // 지금 어디쯤인지 — 점수가 아니라 말로
+    const areas = ['road', 'egg', 'feed', 'sort'];
+    $('parent-levels').innerHTML = areas.map(k => {
+      const n = Math.min(5, Math.max(1, Math.round(P.lvl[k])));
+      return `<div><b>${AREA_NAME[k]}</b> · ${LEVEL_DESC[k][n - 1]} <span style="color:#9ab">(5단계 중 ${n})</span></div>`;
+    }).join('');
+    // 화면 밖에서 함께할 거리 — 가장 낮은 영역 하나를 골라 제안
+    const low = areas.slice().sort((a, b) => P.lvl[a] - P.lvl[b])[0];
+    const lowN = Math.min(5, Math.max(1, Math.round(P.lvl[low])));
+    $('parent-tip').textContent = `💡 ${AREA_NAME[low]}: ${HOME_TIPS[low][lowN - 1]}`;
+    const kidInput = $('parent-kid');
+    if (kidInput) kidInput.value = (P.kid && P.kid.name) || '';
     const avg = (P.lvl.road + P.lvl.egg + P.lvl.feed + P.lvl.sort) / 4;
     document.querySelectorAll('.preset-btn[data-preset]').forEach(b => {
       b.classList.toggle('sel', Math.abs(+b.dataset.preset - avg) < 0.8);
@@ -241,7 +288,9 @@ export function bindGlobalUI(game) {
      주의 (실기기 터치 버그 이력): 기어를 3초 길게 눌러 설정이 열리면, 손을 떼는 순간
      그 손가락이 '새로 뜬 창의 바깥'을 누른 것으로 click이 전달돼 즉시 닫혀 버린다.
      그래서 (1) 누르기가 실제로 바깥에서 시작됐는지 확인하고 (2) 갓 열린 창은 잠깐 보호한다. */
-  for (const id of ['book', 'parent']) {
+  $('gallery-x').addEventListener('click', () => { closeOverlay('gallery'); audio.tap(); });
+  $('gallery-close').addEventListener('click', () => { closeOverlay('gallery'); audio.tap(); });
+  for (const id of ['book', 'parent', 'gallery']) {
     let downOnBackdrop = false;
     $(id).addEventListener('pointerdown', e => { downOnBackdrop = e.target.id === id; });
     $(id).addEventListener('click', e => {
@@ -255,7 +304,7 @@ export function bindGlobalUI(game) {
   // 설치형 앱의 뒤로가기: 오버레이가 열려 있으면 앱을 끄지 않고 그것만 닫는다
   window.addEventListener('popstate', () => {
     if (ignorePop > 0) { ignorePop--; return; } // 우리가 부른 back()의 메아리
-    if (document.querySelector('#parent.show, #book.show')) {
+    if (document.querySelector('#parent.show, #book.show, #gallery.show')) {
       pushedCount = Math.max(0, pushedCount - 1);
       hideAllOverlays();
       audio.tap();
@@ -306,6 +355,12 @@ export function bindGlobalUI(game) {
     game.events.emit('goto-village');
   });
   $('parent-close-btn').addEventListener('click', () => { closeOverlay('parent'); audio.pop(3); });
+  const kidEl = $('parent-kid');
+  if (kidEl) kidEl.addEventListener('change', e => {
+    if (!store.P.kid) store.P.kid = { name: '', call: 1 };
+    store.P.kid.name = String(e.target.value || '').trim().slice(0, 6);
+    store.save();
+  });
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') store.flush();

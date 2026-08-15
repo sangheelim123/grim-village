@@ -1,17 +1,17 @@
-import { addSky, pressify, textStyle, heartBurst, sparkleBurst } from './common.js';
+import { addSky, addFlyers, popIn, pressify, textStyle, heartBurst, sparkleBurst } from './common.js';
 import { store, creatureSize } from '../store.js';
-import { makeCreatureSprite } from '../creature.js';
+import { makeCreatureSprite, drawArt2D } from '../creature.js';
 import { audio } from '../audio.js';
 import { ui } from '../dom-ui.js';
 import { switchScene } from '../main.js';
 import { DECOR_UNLOCKS, rand, pick, clamp } from '../config.js';
 
 const ISLANDS = [
-  { key: 'Road', sign: 'sign_road', name: '길 그리기', nx: 0.14, ny: 0.36 },
-  { key: 'Egg', sign: 'sign_egg', name: '도형 알', nx: 0.86, ny: 0.36 },
-  { key: 'Aqua', sign: 'sign_aqua', name: '수족관', nx: 0.5, ny: 0.33 },
-  { key: 'Feed', sign: 'sign_feed', name: '냠냠', nx: 0.14, ny: 0.75 },
-  { key: 'Sort', sign: 'sign_sort', name: '반짝', nx: 0.86, ny: 0.75 },
+  { key: 'Road', sign: 'sign_road', name: '길 그리기', nx: 0.14, ny: 0.36, sc: 0.86 },
+  { key: 'Egg', sign: 'sign_egg', name: '모양 알', nx: 0.86, ny: 0.36, sc: 0.86 },
+  { key: 'Aqua', sign: 'sign_aqua', name: '수족관', nx: 0.5, ny: 0.33, sc: 0.8 },
+  { key: 'Feed', sign: 'sign_feed', name: '냠냠', nx: 0.14, ny: 0.75, sc: 1.06 },
+  { key: 'Sort', sign: 'sign_sort', name: '반짝', nx: 0.86, ny: 0.75, sc: 1.06 },
 ];
 
 export class VillageScene extends Phaser.Scene {
@@ -64,13 +64,31 @@ export class VillageScene extends Phaser.Scene {
     this.flowerImgs = [];
     this.fountainImg = this.add.image(0, 0, 'fountain').setDepth(-40).setVisible(P.decor.includes('fountain'));
 
+    // 마을에 집과 나무 — 지금까지 '마을'인데 집이 한 채도 없었다.
+    // 캐릭터가 돌아다니는 띠(x 0.24~0.76) 바깥에 두어 겹치지 않게 한다.
+    this.props = [
+      { key: 'house', nx: 0.09, ny: 0.66, s: 1.00, tint: 0xffffff, win: true },
+      { key: 'house', nx: 0.20, ny: 0.63, s: 0.74, tint: 0xbfe0ff, win: true },
+      { key: 'house', nx: 0.91, ny: 0.65, s: 0.86, tint: 0xffe0b0, win: true },
+      { key: 'tree', nx: 0.015, ny: 0.71, s: 0.60 },
+      { key: 'tree', nx: 0.985, ny: 0.69, s: 0.54 },
+    ].map(d => {
+      const im = this.add.image(0, 0, d.key).setOrigin(0.5, 1).setDepth(-42);
+      if (d.tint) im.setTint(d.tint);
+      im.d = d;
+      // 밤이면 창문에 불이 들어온다
+      if (d.win) im.winLights = [-0.19, 0.19].map(() => this.add.image(0, 0, 'dot').setTint(0xffd98a).setDepth(-41).setAlpha(0));
+      return im;
+    });
+
     // 놀이 섬 입구
     this.signs = ISLANDS.map(isl => {
       const cont = this.add.container(0, 0).setDepth(10);
+      const plat = this.add.image(0, 0, 'island_platform');
       const img = this.add.image(0, 0, isl.sign);
       const label = this.add.text(0, 0, isl.name, textStyle(24, '#ffffff', '#b5794a', 7)).setOrigin(0.5);
-      cont.add([img, label]);
-      cont.islData = isl; cont.imgRef = img; cont.labelRef = label;
+      cont.add([plat, img, label]);
+      cont.islData = isl; cont.imgRef = img; cont.labelRef = label; cont.platRef = plat;
       cont.setSize(img.width, img.height + 46); // setInteractive 전에 크기 확정 필수
       pressify(this, cont, () => switchScene(this, isl.key));
       this.tweens.add({
@@ -90,6 +108,18 @@ export class VillageScene extends Phaser.Scene {
     pressify(this, this.easelCont, () => switchScene(this, 'Draw'));
     this.tweens.add({ targets: this.easelCont, angle: 2, duration: 2200, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
 
+    // 그림 게시판 — 아이가 그림 놀이터에서 건 그림이 마을에 실제로 걸린다
+    // 위치는 간판들 사이의 빈 띠(세로 0.58) — 좁은 폰에서 간판 히트 영역에 묻히지 않는 곳
+    this.boardCont = this.add.container(0, 0).setDepth(11);
+    const boardBg = this.add.image(0, 0, 'panel').setDisplaySize(112, 100);
+    this.boardCont.add(boardBg);
+    this.boardBg = boardBg;
+    this.boardArt = null;
+    this.refreshBoard();
+    this.boardCont.setSize(112, 112);
+    pressify(this, this.boardCont, () => ui.openGallery());
+    this.tweens.add({ targets: this.boardCont, angle: -1.5, duration: 2600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+
     // 캐릭터들 (짝꿍은 절대 밀려나지 않는다)
     this.walkers = [];
     for (const char of store.villageChars(8)) this.spawnWalker(char);
@@ -100,7 +130,7 @@ export class VillageScene extends Phaser.Scene {
 
     // 빈 마을 안내
     this.hintHand = this.add.image(0, 0, 'hand').setDepth(60).setVisible(false).setScale(0.8);
-    this.hintText = this.add.text(0, 0, '도형 알 섬에서 그림을 그리면\n친구가 태어나요!',
+    this.hintText = this.add.text(0, 0, '모양 알 섬에서 그림을 그리면\n친구가 태어나요!',
       textStyle(24, '#ffffff', '#e8955c', 8)).setOrigin(0.5).setAlign('center').setDepth(60).setVisible(false);
     if (P.chars.length === 0) {
       this.hintHand.setVisible(true).setAngle(30);
@@ -110,14 +140,19 @@ export class VillageScene extends Phaser.Scene {
 
     // 반딧불 (밤 + 해금)
     this.fireflies = this.add.particles(0, 0, 'sparkle', {
-      x: { min: 0, max: 2000 }, y: { min: 0, max: 500 },
+      x: { min: 0, max: this.scale.width }, y: { min: 0, max: this.scale.height * 0.42 },
       lifespan: 4000, scale: { start: 0.16, end: 0 },
       alpha: { start: 0.9, end: 0 }, speed: { min: 4, max: 18 },
       quantity: 1, frequency: 600, tint: 0xfff09a,
     }).setDepth(-30);
     this.fireflies.stop();
 
+    // 화면을 가로지르는 생명 — 정지한 세계에 숨을 넣는다 (마리 수는 꼭 적게)
+    this.butterflies = addFlyers(this, 3, { y0: 0.62, y1: 0.86, depth: 25 });
+    this.birds = addFlyers(this, 2, { key: 'bird', y0: 0.12, y1: 0.28, depth: -85, scale: 0.7, tint: 0xa8c0d8 });
+
     this.layout();
+    popIn(this, this.signs.concat([this.easelCont]), { delay: 70 });
     this.scale.on('resize', this.layout, this);
     this.events.once('shutdown', () => {
       this.scale.off('resize', this.layout, this);
@@ -128,9 +163,32 @@ export class VillageScene extends Phaser.Scene {
     const unlocked = this.checkNewDecor();
     if (!P.intro) {
       P.intro = true; store.save();
-      this.time.delayedCall(500, () => audio.speak('무럭무럭 그림 마을에 온 걸 환영해요! 도형 알 섬에서 그림을 그리면 친구가 태어나요!'));
+      this.time.delayedCall(500, () => audio.speak('무럭무럭 그림 마을에 잘 왔어요! 모양 알 섬에서 그림을 그리면, 친구가 태어나요!'));
     } else if (!unlocked && P.chars.length > 0) {
       this.time.delayedCall(350, () => audio.speak('친구들이 기다리고 있었어요!', { pri: 2 }));
+    }
+  }
+
+  /* 게시판에 가장 최근 그림을 굽는다 (없으면 "그려 보세요" 안내) */
+  refreshBoard() {
+    const arts = store.P.arts || [];
+    const has = arts.length > 0;
+    this.boardCont.setVisible(true);
+    if (this.boardArt) { this.boardArt.destroy(); this.boardArt = null; }
+    if (this.boardTip) { this.boardTip.destroy(); this.boardTip = null; }
+    if (has) {
+      const key = `board-${arts[arts.length - 1].b || 0}`;
+      if (!this.textures.exists(key)) {
+        const tex = this.textures.createCanvas(key, 220, 220);
+        drawArt2D(tex.getContext(), arts[arts.length - 1], 110, 110, 200);
+        tex.refresh();
+      }
+      this.boardArt = this.add.image(0, -2, key).setDisplaySize(82, 82);
+      this.boardCont.add(this.boardArt);
+    } else {
+      this.boardTip = this.add.text(0, 0, '🖼️\n그림을\n걸어 봐요', textStyle(12, '#9a8a70'))
+        .setOrigin(0.5).setAlign('center');
+      this.boardCont.add(this.boardTip);
     }
   }
 
@@ -266,7 +324,8 @@ export class VillageScene extends Phaser.Scene {
     });
   }
 
-  update(now) {
+  update(now, delta) {
+    this.bg.step(Math.min(0.05, (delta || 16) / 1000), this.scale.width);
     /* 4분 주기: 해가 왼쪽 지평선에서 떠서 가운데를 지나 오른쪽으로 지고(0~112초),
        노을이 물들며 밤이 오면(112~128초) 달이 같은 길을 따라간다(126~224초).
        해·달은 언덕(-70)보다 뒤(-88)라 지평선 뒤로 자연스럽게 잠긴다. */
@@ -322,6 +381,27 @@ export class VillageScene extends Phaser.Scene {
       Math.round(255 * dim * (1 - warm * 0.35)),
       Math.round(255 * (1 - nf * 0.3) * (1 - warm * 0.5)));
     for (const c of this.bg.clouds) c.setTint(cloudTint);
+    // 표지판·이젤·꽃·소품도 함께 저물게 — 밤인데 이것들만 대낮이면 세계가 둘로 쪼개진다.
+    // 다만 아이의 창작물(캐릭터)은 가장 밝게 남겨 시선이 그쪽으로 간다.
+    if (Math.abs(nf - (this._lastNf == null ? -1 : this._lastNf)) > 0.01 || Math.abs(glow - (this._lastGlowT || -1)) > 0.02) {
+      this._lastNf = nf; this._lastGlowT = glow;
+      const soft = 1 - (1 - dim) * 0.55;
+      const softTint = Phaser.Display.Color.GetColor(
+        Math.round(255 * soft), Math.round(255 * soft * (1 - warm * 0.12)), Math.round(255 * soft * (1 - warm * 0.2)));
+      for (const f of this.flowerImgs) f.setTint(tint);
+      for (const s of this.signs) { s.imgRef.setTint(softTint); if (s.platRef) s.platRef.setTint(tint); }
+      this.easelCont.easelImg.setTint(softTint);
+      for (const im of this.props) if (!im.d.tint) im.setTint(tint);
+      this.rainbowImg.setTint(tint);
+      for (const b of this.butterflies) b.setVisible(nf < 0.5);
+      for (const b of this.birds) b.setVisible(nf < 0.6);
+    }
+    for (const im of this.props) {
+      if (!im.winLights) continue;
+      const a = nf * 0.8 * (0.9 + 0.1 * Math.sin(now * 0.002));
+      for (const wl of im.winLights) wl.setAlpha(a);
+    }
+    audio.setMood(nf > 0.5 ? 'night' : 'village');
 
     const fireflyOn = nf > 0.4 && store.P.decor.includes('firefly');
     if (fireflyOn && !this._ffOn) { this.fireflies.start(); this._ffOn = true; }
@@ -360,7 +440,7 @@ export class VillageScene extends Phaser.Scene {
     // 꽃 (반짝 보상 + 꽃밭 해금)
     for (const f of this.flowerImgs) f.destroy();
     this.flowerImgs = [];
-    const flowerN = Math.min(18, P.flowers) + (P.decor.includes('garden') ? 6 : 0);
+    const flowerN = Math.min(40, P.flowers) + (P.decor.includes('garden') ? 6 : 0) + (P.decor.includes('garden2') ? 10 : 0);
     for (let i = 0; i < flowerN; i++) {
       const fx = (Math.sin(i * 87.7) * 0.5 + 0.5) * w * 0.9 + w * 0.05;
       const fy = h * (0.88 + (Math.cos(i * 55.3) * 0.5 + 0.5) * 0.07);
@@ -374,12 +454,16 @@ export class VillageScene extends Phaser.Scene {
     this.signs.forEach(cont => {
       const isl = cont.islData;
       cont.setPosition(isl.nx * w, isl.ny * h);
-      cont.imgRef.setScale(signScale);
+      cont.imgRef.setScale(signScale * (isl.sc || 1));
       cont.labelRef.setPosition(0, cont.imgRef.displayHeight * 0.62).setFontSize(Math.max(17, 24 * signScale));
+      cont.platRef.setScale(signScale * (isl.sc || 1) * 1.05)
+        .setPosition(0, cont.imgRef.displayHeight * 0.42);
       cont.setSize(cont.imgRef.displayWidth, cont.imgRef.displayHeight + 30);
       // 컨테이너 히트 영역은 (0,0,w,h) 좌상단 규약 (common.js pressify 참고)
       cont.input && (cont.input.hitArea = new Phaser.Geom.Rectangle(0, 0, cont.width, cont.height));
     });
+    this.boardCont.setPosition(w * 0.5, h * (store.P.chars.length ? 0.58 : 0.62)).setScale(clamp(m * 0.0016, 0.6, 1.05));
+    this.boardCont.input && (this.boardCont.input.hitArea = new Phaser.Geom.Rectangle(0, 0, this.boardCont.width, this.boardCont.height));
     this.easelCont.setPosition(w * 0.5, h * 0.82);
     this.easelCont.easelImg.setScale(signScale * 0.85);
     this.easelCont.easelLabel.setPosition(0, this.easelCont.easelImg.displayHeight * 0.58)
@@ -390,10 +474,16 @@ export class VillageScene extends Phaser.Scene {
 
     const eggSign = this.signs[1];
     this.hintHand.setPosition(eggSign.x - eggSign.imgRef.displayWidth * 0.62, eggSign.y + 8).setAngle(40);
-    this.hintText.setPosition(w / 2, h * 0.5).setFontSize(Math.max(17, m * 0.033));
+    this.hintText.setPosition(w / 2, h * 0.45).setFontSize(Math.max(17, m * 0.033));
 
-    this.fireflies.setConfig ? null : null;
     this.fireflies.setPosition(0, h * 0.45);
+    try { this.fireflies.ops.x.onChange(0, w); this.fireflies.ops.y.onChange(0, h * 0.42); } catch (e) {}
+    for (const im of this.props) {
+      im.setPosition(im.d.nx * w, im.d.ny * h).setScale(m * 0.0011 * im.d.s);
+      if (im.winLights) im.winLights.forEach((wl, i) => wl
+        .setPosition(im.x + (i ? 0.19 : -0.19) * im.displayWidth, im.y - im.displayHeight * 0.55)
+        .setDisplaySize(im.displayWidth * 0.14, im.displayWidth * 0.14));
+    }
 
     const band = this.wanderBand();
     for (const wk of this.walkers) {

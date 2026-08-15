@@ -4,13 +4,15 @@ import { SORT_COLORS } from '../config.js';
 
 const IMGS = [
   ['sky_day', 128, 128], ['sky_night', 128, 128],
+  ['sky_egg', 128, 128], ['sky_feed', 128, 128], ['sky_sort', 128, 128], ['sky_road', 128, 128],
   ['hills_far', 1000, 260], ['hills_near', 1000, 300], ['ground', 1000, 200],
   ['cloud1', 260, 117], ['cloud2', 195, 91],
   ['sun', 200, 200], ['moon', 170, 170],
   ['flower1', 72, 96], ['flower2', 72, 96], ['flower3', 68, 92],
   ['rainbow', 560, 294], ['fountain', 208, 195], ['grass', 90, 54],
   ['sign_road', 240, 240], ['sign_egg', 240, 240], ['sign_feed', 254, 268], ['sign_sort', 240, 254],
-  ['sign_aqua', 240, 240],
+  ['sign_aqua', 240, 240], ['island_platform', 300, 188], ['glow', 256, 256],
+  ['butterfly', 80, 64], ['bird', 60, 30],
   ['easel', 210, 238], ['nest', 420, 182], ['egg_big', 338, 416],
   ['flag', 117, 156], ['house', 266, 252], ['plate', 468, 143],
   ['basket', 260, 208], ['tree', 546, 624],
@@ -47,6 +49,7 @@ export class BootScene extends Phaser.Scene {
 
   create() {
     audio.init(this);
+    audio.initLimiter(this);
     const EMB = window.__EMBEDDED_ASSETS;
     const jobs = [];
 

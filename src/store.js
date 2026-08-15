@@ -9,6 +9,8 @@ function defaultState() {
     chars: [],
     trails: [],
     aqua: [], // 수족관 물고기 (색 보존 스트로크)
+    arts: [], // 그림 놀이터에서 마을 게시판에 건 그림
+    kid: { name: '', call: 1 }, // 아이 이름 (선택 — 로컬에만 저장)
     flowers: 0,
     stars: { road: 0, egg: 0, feed: 0, sort: 0 },
     lvl: { road: 1, egg: 1, feed: 1, sort: 1 },
