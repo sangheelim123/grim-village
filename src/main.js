@@ -26,6 +26,12 @@ const game = new Phaser.Game({
 
 /* 장면 전환 (페이드 + 휙 소리). Phaser가 씬 종료 시 타이머·트윈을 정리하므로
    v3의 '축하 타이머 누수' 계열 문제가 구조적으로 사라진다. */
+/* 목적지 색으로 페이드 — 전환 자체가 "어디로 가는지"를 색으로 예고한다.
+   특히 어두운 수족관으로 들어갈 때 흰 섬광이 터지지 않게 한다. */
+const FADE = {
+  Aqua: [26, 110, 168], Egg: [255, 232, 240], Feed: [255, 240, 220],
+  Sort: [240, 236, 250], Road: [234, 250, 255], Draw: [255, 253, 246], Village: [255, 255, 255],
+};
 export function switchScene(from, key, data) {
   if (from._switching) return;
   from._switching = true;
@@ -35,7 +41,8 @@ export function switchScene(from, key, data) {
   ui._celState = null;
   ui.setActionBar('');
   ui.setPill('');
-  from.cameras.main.fadeOut(220, 255, 255, 255);
+  const [fr, fg, fb] = FADE[key] || [255, 255, 255];
+  from.cameras.main.fadeOut(220, fr, fg, fb);
   from.time.delayedCall(230, () => {
     from._switching = false; // 씬 객체는 재사용되므로 반드시 리셋
     from.scene.start(key, data || {});

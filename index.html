@@ -47,7 +47,7 @@ button { font-family: inherit; cursor: pointer; border: none; }
 /* ============ 안내 필 · 토스트 ============ */
 #pill {
   position: fixed; top: calc(16px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
-  background: #ffffff; color: #ff7b4a;
+  background: #ffffff; color: #f0632c;
   padding: 12px 26px; border-radius: 999px;
   font-size: clamp(17px, 4vmin, 22px);
   box-shadow: 0 4px 0 #ecdfc8, 0 8px 18px rgba(60,80,120,0.18); pointer-events: none;
@@ -70,7 +70,9 @@ button { font-family: inherit; cursor: pointer; border: none; }
 #action-bar {
   position: fixed; bottom: calc(12px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%);
   display: none; align-items: center; gap: 10px; z-index: 30; flex-wrap: wrap; justify-content: center;
-  max-width: 96vw;
+  /* 폭을 명시하지 않으면 shrink-to-fit로 좁아져 색 버튼이 4개씩 접히고
+     바가 화면 절반을 먹는다 (그릴 자리가 사라진다) */
+  width: min(96vw, 760px); max-width: 96vw;
 }
 #action-bar.show { display: flex; }
 .act-btn {
@@ -128,11 +130,16 @@ button { font-family: inherit; cursor: pointer; border: none; }
 #cel-btns { display: flex; gap: 12px; justify-content: center; margin-top: 18px; flex-wrap: wrap; }
 
 /* ============ 도감 ============ */
-#book {
+#book, #gallery {
   position: fixed; inset: 0; background: rgba(30,50,90,0.45);
   display: none; align-items: center; justify-content: center; z-index: 70; padding: 14px;
 }
-#book.show { display: flex; }
+#book.show, #gallery.show { display: flex; }
+#gallery-sub { font-size: clamp(13px, 3.2vmin, 16px); color: #8a7a60; margin-bottom: 12px; }
+#gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(106px, 1fr)); gap: 10px; }
+#gallery-grid canvas { border-radius: 12px; background: #fffdf6; box-shadow: inset 0 0 0 3px #ffe9c8, 0 4px 0 #efe2c8; }
+#gallery-empty { font-size: clamp(15px,3.6vmin,18px); color: #8a7a60; padding: 30px 6px; line-height: 1.8; }
+#gallery-close { margin-top: 16px; }
 #book-box {
   background: #fff8ec; border-radius: 32px; padding: 22px;
   width: min(94vw, 580px); max-height: 88vh; overflow-y: auto; touch-action: pan-y;
@@ -148,7 +155,7 @@ button { font-family: inherit; cursor: pointer; border: none; }
 }
 .overlay-x:active { transform: scale(0.9); }
 #book-box h2 { font-size: clamp(21px, 5vmin, 28px); color: #ff8a5c; margin-bottom: 2px; }
-#book-sub { font-size: clamp(13px, 3.2vmin, 16px); color: #9a8a70; margin-bottom: 12px; }
+#book-sub { font-size: clamp(13px, 3.2vmin, 16px); color: #8a7a60; margin-bottom: 12px; }
 #book-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(106px, 1fr)); gap: 10px; }
 .book-card {
   background: #fff; border-radius: 20px; padding: 8px 4px 6px;
@@ -191,17 +198,29 @@ button { font-family: inherit; cursor: pointer; border: none; }
 }
 .preset-btn.sel { background: #56b4ec; color: #fff; box-shadow: 0 3px 0 #2a7ab0; }
 #parent-stats { background: #f6f9fb; border-radius: 14px; padding: 10px 14px; font-weight: 700; color: #4a6a80; }
+#parent-levels { background: #fbf7f0; border-radius: 14px; padding: 10px 14px; font-size: 14px; line-height: 1.9; color: #5a4a38; }
+#parent-tip { background: #eef8f0; border-radius: 14px; padding: 10px 14px; font-size: 13.5px; line-height: 1.7; color: #3a6a4a; margin-top: 8px; }
+#parent-kid { width: 100%; padding: 10px 14px; border-radius: 12px; border: 2px solid #d0dde5; font-size: 16px; font-family: inherit; }
 #parent-note { font-size: 12.5px; color: #8a9aa8; margin-top: 12px; }
 #parent-btns { display: flex; gap: 8px; margin-top: 16px; }
 #btn-reset-data { background: #fbe9e9; color: #b05050; box-shadow: 0 3px 0 #e0c0c0; }
 #parent-close-btn { background: #56b4ec; color: #fff; box-shadow: 0 3px 0 #2a7ab0; }
 #parent-btns button { flex: 1; padding: 12px; border-radius: 14px; font-size: 16px; font-weight: 800; }
 
+/* 좁은 화면: 색 9개가 한 줄에 들어가야 액션바가 화면 절반을 먹지 않는다.
+   (36px×9 + 6px 간격 8개 = 372px — 390 폭 폰에 한 줄로 들어간다) */
 @media (max-width: 480px) {
   .ui-btn { width: 54px; height: 54px; font-size: 25px; border-radius: 18px; }
   #btn-profile { font-size: 29px; }
-  .act-btn { height: 56px; min-width: 110px; }
-  .pick-btn { width: 48px; height: 48px; }
+  #action-bar { gap: 6px; }
+  .act-btn { height: 50px; min-width: 96px; padding: 0 14px; font-size: clamp(16px, 4.4vmin, 20px); border-radius: 18px; }
+  .act-btn.small { width: 46px; min-width: 0; padding: 0; font-size: 21px; }
+  .pick-btn { width: 36px; height: 36px; border-width: 3px; font-size: 17px; }
+  .pick-btn.sel { outline-width: 4px; transform: scale(1.1); }
+}
+@media (max-width: 360px) {
+  .pick-btn { width: 31px; height: 31px; border-width: 2px; }
+  .act-btn { min-width: 84px; height: 46px; }
 }
 
 /* 가로 모드(낮은 높이): 버튼·바를 줄여 놀이 영역을 지킨다 —
@@ -251,8 +270,19 @@ button { font-family: inherit; cursor: pointer; border: none; }
     <h2>📔 우리 마을 친구들</h2>
     <div id="book-sub"></div>
     <div id="book-grid"></div>
-    <div id="book-empty" style="display:none">아직 친구가 없어요.<br>🥚 도형 알 섬에서 그림을 그리면<br>친구가 태어나요!</div>
+    <div id="book-empty" style="display:none">아직 친구가 없어요.<br>🥚 모양 알 섬에서 그림을 그리면<br>친구가 태어나요!</div>
     <button class="act-btn blue" id="book-close">닫기</button>
+  </div>
+</div>
+
+<div id="gallery">
+  <div id="book-box" class="gallery-box">
+    <button class="overlay-x" id="gallery-x" aria-label="닫기">✕</button>
+    <h2>🖼️ 우리 마을 그림 게시판</h2>
+    <div id="gallery-sub"></div>
+    <div id="gallery-grid"></div>
+    <div id="gallery-empty" style="display:none">아직 걸린 그림이 없어요.<br>🎨 그림 놀이터에서 그림을 그리고<br>"마을에 걸기"를 눌러 보세요!</div>
+    <button class="act-btn blue" id="gallery-close">닫기</button>
   </div>
 </div>
 
@@ -261,6 +291,12 @@ button { font-family: inherit; cursor: pointer; border: none; }
     <button class="overlay-x" id="parent-x" aria-label="닫기">✕</button>
     <h2>👨‍👩‍👧 부모 코너</h2>
     <div id="parent-stats"></div>
+    <h3>지금 어디쯤일까요</h3>
+    <div id="parent-levels"></div>
+    <p id="parent-tip"></p>
+    <h3>아이 이름 (선택)</h3>
+    <input id="parent-kid" type="text" maxlength="6" placeholder="예: 지우" autocomplete="off">
+    <p style="font-size:12.5px;color:#8a9aa8;margin-top:4px">이름을 넣으면 가끔 아이를 이름으로 불러 줘요. 이 기기에만 저장되고 어디로도 전송되지 않아요.</p>
     <h3>시작 난이도 (현재 프로필)</h3>
     <div class="preset-row">
       <button class="preset-btn" data-preset="1">🌱 새싹 (4~5세)</button>

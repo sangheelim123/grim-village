@@ -49,6 +49,7 @@ export class ProfileScene extends Phaser.Scene {
   }
 
   pickProfile(p) {
+    audio.primeVoice(); // iOS는 첫 발화가 탭 안에서 열려야 이후 지연 발화가 산다
     try { localStorage.setItem('village-v4-last', String(p)); } catch (e) {}
     store.load(p);
     document.getElementById('btn-profile').textContent = p === 0 ? '🐰' : '🐻';

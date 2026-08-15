@@ -20,7 +20,8 @@ const MODULES = [
   'src/scenes/AquaScene.js',
   'src/main.js',
 ];
-const IMG_KEYS = ['sky_day','sky_night','hills_far','hills_near','ground','cloud1','cloud2','sun','moon',
+const IMG_KEYS = ['sky_day','sky_night','sky_egg','sky_feed','sky_sort','sky_road',
+  'island_platform','glow','butterfly','bird','hills_far','hills_near','ground','cloud1','cloud2','sun','moon',
   'flower1','flower2','flower3','rainbow','fountain','grass','sign_road','sign_egg','sign_feed','sign_sort','sign_aqua',
   'easel','nest','egg_big','flag','house','plate','basket','tree','apple','orange','grape','strawberry',
   'hand','heart','sparkle','star','dot','face_bunny','face_bear','btn_round','btn_pill','btn_pill_blue',

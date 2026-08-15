@@ -1,5 +1,5 @@
 /* 오프라인 캐시: 설치 시 전체 프리캐시, 이후 캐시 우선 */
-const CACHE = 'village-v4-8';
+const CACHE = 'village-v4-9';
 const ASSETS = [
   './', './index.html', './manifest.webmanifest',
   './vendor/phaser.min.js',
@@ -12,7 +12,8 @@ const ASSETS = [
   './assets/font/Jua-Regular.ttf',
   './assets/img/icon-192.png', './assets/img/icon-512.png',
 ];
-const IMGS = ['sky_day','sky_night','hills_far','hills_near','ground','cloud1','cloud2','sun','moon',
+const IMGS = ['sky_day','sky_night','sky_egg','sky_feed','sky_sort','sky_road',
+  'island_platform','glow','butterfly','bird','hills_far','hills_near','ground','cloud1','cloud2','sun','moon',
   'flower1','flower2','flower3','rainbow','fountain','grass','sign_road','sign_egg','sign_feed','sign_sort','sign_aqua',
   'easel','nest','egg_big','flag','house','plate','basket','tree','apple','orange','grape','strawberry',
   'hand','heart','sparkle','star','dot','face_bunny','face_bear','btn_round','btn_pill','btn_pill_blue',
