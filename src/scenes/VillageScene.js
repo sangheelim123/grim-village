@@ -24,6 +24,10 @@ const ISLANDS = [
    둘이 다르면 먼저 i를 0까지 내린 뒤에 갈아탄다 (날씨가 뚝 바뀌지 않게). */
 const wx = { kind: 'clear', want: 'clear', i: 0, until: 0, dir: 1, snow: 0, wet: 0, gust: 0.6, lastKind: null };
 
+/* 파티클 품질(1 = 최상). 기기 성능은 씬을 오간다고 달라지지 않으므로
+   한 번 알아낸 값을 마을을 드나들어도 유지한다 — 매번 다시 버벅이며 배우지 않게. */
+const quality = { q: 1 };
+
 /* 앱을 완전히 껐다 켜면 모듈 변수도 함께 사라진다 — 잠깐 자리를 비운 사이라면
    비가 그대로 내리고 있어야 세계가 이어진다. 오래 지났으면 새 하루처럼 맑음부터.
    프로필별 저장이 아니라 '마을의 지금'이므로 store와는 다른 키를 쓴다. */
@@ -151,6 +155,10 @@ export class VillageScene extends Phaser.Scene {
     });
 
     // 그림 놀이터
+    /* 이젤은 친구들(depth 20)보다 아래에 둔다. 위로 올려 봤더니 이젤의 히트 영역이
+       마당 한복판에서 친구들의 탭을 가로채 버렸다(격자 프로브로 확인) — 눈에 보이는
+       것이 눌려야 하므로 앞에 선 친구가 이기는 게 맞다.
+       대신 친구들이 이젤 앞에 '멈춰 서지' 않게 wander가 그 자리를 피한다(avoidEasel). */
     this.easelCont = this.add.container(0, 0).setDepth(10);
     const easelImg = this.add.image(0, 0, 'easel');
     const easelLabel = this.add.text(0, 0, '그림 놀이터', textStyle(21, '#ffffff', '#a76b3f', 6)).setOrigin(0.5);
@@ -204,6 +212,7 @@ export class VillageScene extends Phaser.Scene {
     this.birds = addFlyers(this, 2, { key: 'bird', y0: 0.12, y1: 0.28, depth: -85, scale: 0.7, tint: 0xa8c0d8 });
 
     this.wx = wx; // 디버그·테스트에서 들여다볼 수 있게
+    this.quality = quality;
     if (!wxLoaded) loadWx(this.time.now / 1000); // 페이지 수명당 한 번만
     this.createWeather();
 
@@ -292,7 +301,12 @@ export class VillageScene extends Phaser.Scene {
     cont.gen = 0;        // 이동 '세대' — 날씨가 바뀌면 올려서 옛 트윈 체인을 무효화한다
     cont.mode = 'wander';
     cont.setDepth(20);
-    cont.setInteractive(new Phaser.Geom.Circle(0, 0, cont.baseSize * 0.7), Phaser.Geom.Circle.Contains);
+    /* 컨테이너 히트 판정은 로컬 좌표에 displayOrigin(w/2, h/2)이 더해진 값으로 온다
+       (common.js pressify 주석 참고). 중심을 (0,0)으로 두면 반응 영역이 통째로
+       왼쪽 위로 밀려서, 아이가 친구 얼굴을 눌러도 아무 일이 없고 옆의 빈 공간을
+       눌러야 반응했다 — 격자 프로브로 확인한 실제 증상이다. */
+    const hr = cont.baseSize;
+    cont.setInteractive(new Phaser.Geom.Circle(hr / 2, hr / 2, hr * 0.72), Phaser.Geom.Circle.Contains);
     cont.on('pointerdown', () => {
       // 성격이 무엇이든 탭 보상(소리+하트)은 항상 지켜진다
       audio.squeak();
@@ -377,14 +391,25 @@ export class VillageScene extends Phaser.Scene {
     return { x0: w * 0.24, x1: w * 0.76, y0: h * 0.6, y1: h * 0.85 };
   }
 
+  /* 이젤 앞은 비워 둔다 — 그 자리에 멈춰 서면 이젤을 가리고, 아이가 누르려는 것을
+     가로챈다. 지나가는 건 괜찮지만 목적지로 삼지는 않는다. */
+  avoidEasel(tx, ty) {
+    const e = this.easelCont;
+    if (!e || !e.easelImg) return tx;
+    const hw = e.easelImg.displayWidth * 0.8, hh = e.easelImg.displayHeight * 0.7;
+    if (Math.abs(tx - e.x) > hw || Math.abs(ty - e.y) > hh) return tx;
+    const band = this.wanderBand();
+    return clamp(tx < e.x ? e.x - hw - 4 : e.x + hw + 4, band.x0, band.x1);
+  }
+
   wander(cont) {
     if (!cont.active || !this.scene.isActive()) return;
     cont.mode = 'wander';
     const g = cont.gen;
     const pers = cont.pers || 0;
     const band = this.wanderBand();
-    const tx = rand(band.x0, band.x1);
     const ty = clamp(cont.y + rand(-40, 40), band.y0, band.y1);
+    const tx = this.avoidEasel(rand(band.x0, band.x1), ty);
     cont.bodyImg.setFlipX(tx < cont.x);
     const dist = Math.hypot(tx - cont.x, ty - cont.y);
     let speed = pers === 0 ? 0.05 : pers === 1 ? 0.026 : 0.035; // 씩씩이 빠름, 잠꾸러기 느긋
@@ -536,6 +561,23 @@ export class VillageScene extends Phaser.Scene {
     rng(this.leafEm.ops.speedX, d * 170, d * 360);
   }
 
+  /* 저사양 기기 자동 배려: 프레임이 무너지면 파티클을 조용히 줄이고,
+     여유가 생기면 되돌린다. 아이가 느끼는 건 '비가 조금 덜 온다'뿐이고,
+     그건 끊기는 화면보다 훨씬 낫다.
+     줄이는 건 날씨 파티클뿐 — 친구들(아이의 창작물)은 절대 줄이지 않는다. */
+  stepQuality(t) {
+    if (this.autoQuality === false) return;
+    if (t - (this._qAt || 0) < 2) return;
+    if (!this._qAt) { this._qAt = t; return; } // 첫 2초(부팅 직후 튐)는 보지 않는다
+    this._qAt = t;
+    const fps = this.game.loop.actualFps;
+    if (!fps || !isFinite(fps)) return;
+    const before = quality.q;
+    if (fps < 40) quality.q = Math.max(0.4, quality.q - 0.15);
+    else if (fps > 52) quality.q = Math.min(1, quality.q + 0.1);
+    if (Math.abs(quality.q - before) > 0.01) this.syncWeatherEmitters();
+  }
+
   /* 지금 날씨·세기에 맞춰 파티클을 켜고 끈다 (세기가 약할수록 드문드문) */
   syncWeatherEmitters() {
     if (!this.rainEm) return;
@@ -548,7 +590,8 @@ export class VillageScene extends Phaser.Scene {
       } else if (em.emitting) em.stop();
     };
     const lively = i > 0.05;
-    const slow = f => Math.round(f / clamp(i, 0.2, 1));
+    // frequency는 '방출 간격(ms)'이라 나누는 값이 작아질수록 파티클이 줄어든다
+    const slow = f => Math.round(f / (clamp(i, 0.2, 1) * quality.q));
     on(this.rainEm, k === 'rain' && lively, slow(30), 2);
     on(this.splashEm, k === 'rain' && i > 0.3, slow(55), 1);
     on(this.snowEm, k === 'snow' && lively, slow(150), 1);
@@ -585,6 +628,7 @@ export class VillageScene extends Phaser.Scene {
     for (const c of this.snowCaps) c.setAlpha(wx.snow * 0.82);
     if (Math.abs(wx.i - this._wxAppliedI) > 0.08) { this._wxAppliedI = wx.i; this.syncWeatherEmitters(); }
     if (t - (this._wxSavedAt || 0) > 4) { this._wxSavedAt = t; saveWx(t); }
+    this.stepQuality(t);
     // 소리는 계단식으로만 갱신한다 (매 프레임 setTargetAtTime을 쌓지 않는다)
     const lvl = Math.round(wx.i * 8) / 8;
     if (lvl !== this._wxSndI || wx.kind !== this._wxSndKind) {
@@ -812,6 +856,10 @@ export class VillageScene extends Phaser.Scene {
     else if (t >= 128 && t < 222) nf = 1;
     else if (t >= 222) nf = 1 - (t - 222) / 18;
     this.nightSky.setAlpha(nf);
+    /* 밤하늘(sky_night)은 불투명한 전면 사각형이라 완전히 덮이면 낮 하늘은
+       한 픽셀도 보이지 않는다 — 그런데도 계속 그려서 화면 한 겹을 통째로 낭비했다.
+       (실측: 밤 오버드로우 ×5.67 → ×4.67). 저사양 태블릿은 채우기 속도가 병목이다. */
+    this.bg.sky.setVisible(nf < 0.985);
     this._nf = nf; // 날씨 추첨(밤엔 눈이 더 자주)·무지개 판단이 참조한다
 
     /* 날씨는 낮밤 위에 한 겹 더 얹힌다 — 흐림(overcast)이 해·노을·별·색을
@@ -1033,8 +1081,8 @@ export class VillageScene extends Phaser.Scene {
         wk.setPosition(s.x, s.y);
         return;
       }
-      wk.x = clamp(wk.x, band.x0, band.x1);
       wk.y = clamp(wk.y, band.y0, band.y1);
+      wk.x = this.avoidEasel(clamp(wk.x, band.x0, band.x1), wk.y);
     });
   }
 }
