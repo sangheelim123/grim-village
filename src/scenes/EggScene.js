@@ -155,6 +155,12 @@ export class EggScene extends Phaser.Scene {
     this.eggImg = this.add.image(0, 0, 'egg_big').setDepth(5);
     audio.setMood('play');
     this.guideG = this.add.graphics().setDepth(10);
+    /* art = 이미 그은 획을 구워 둔 판, strokeG = 지금 긋고 있는 한 획.
+       Graphics는 매 프레임 커맨드 버퍼 전체를 다시 처리해서, 획을 쌓아 두면
+       프레임 비용이 획 수에 그대로 비례한다 (실측: 10획 21ms/프레임).
+       한창 그리는 중에 느려지는 건 그리기 앱에서 가장 나쁜 종류의 지연이다. */
+    this.art = null;
+    this.bakeG = this.make.graphics({ x: 0, y: 0 }, false); // 굽기 전용 (화면에 없음)
     this.strokeG = this.add.graphics().setDepth(12);
     this.sampleG = this.add.graphics().setDepth(10);
     this.samplePanel = this.add.image(0, 0, 'panel').setDepth(9).setVisible(false);
@@ -306,6 +312,11 @@ export class EggScene extends Phaser.Scene {
 
   layout() {
     const { width: w, height: h } = this.scale;
+    // 구운 획 판은 화면 크기와 같아야 한다 (회전하면 새로 만들고 아래에서 다시 굽는다)
+    if (!this.art || this.art.width !== Math.ceil(w) || this.art.height !== Math.ceil(h)) {
+      if (this.art) this.art.destroy();
+      this.art = this.add.renderTexture(0, 0, Math.ceil(w), Math.ceil(h)).setOrigin(0).setDepth(11);
+    }
     this.bg.sky.setDisplaySize(w, h);
     const m = Math.min(w, h);
     this.bg.fit(w, h);
@@ -440,25 +451,42 @@ export class EggScene extends Phaser.Scene {
       this.strokes.push([q, [q[0] + 2, q[1] + 2]]);
     }
     this.stroke = null;
+    this.bakeStroke(this.strokes[this.strokes.length - 1]); // 완성된 획은 판에 굽는다
     // 완료 판정은 손을 뗀 순간에만 — "다 그렸다"는 감각과 일치
     if (this.state === 'trace' && this.tracer && this.tracer.coverage >= TUNING.eggAutoFinish) {
       this.finishTrace();
     }
   }
 
+  paintTrace(g, st) {
+    const bw = this.brushW();
+    g.lineStyle(bw, 0xe06a9a, 1);
+    g.fillStyle(0xe06a9a, 1);
+    g.fillCircle(st[0][0], st[0][1], bw / 2);
+    for (let i = 1; i < st.length; i++) {
+      g.lineBetween(st[i - 1][0], st[i - 1][1], st[i][0], st[i][1]);
+      g.fillCircle(st[i][0], st[i][1], bw / 2); // 마디를 채워 두꺼운 선의 각짐을 없앤다
+    }
+  }
+
+  bakeStroke(st) {
+    this.strokeG.clear();
+    if (!this.art || !st || st.length < 1) return;
+    this.bakeG.clear();
+    this.paintTrace(this.bakeG, st);
+    this.art.draw(this.bakeG);
+    this.bakeG.clear();
+  }
+
+  /* 되돌리기·화면 회전처럼 전체가 달라질 때만 통째로 다시 굽는다 (일회성) */
   redrawStrokes() {
     this.strokeG.clear();
-    if (this.state !== 'trace') return;
-    const bw = this.brushW();
-    this.strokeG.lineStyle(bw, 0xe06a9a, 1);
-    this.strokeG.fillStyle(0xe06a9a, 1);
-    for (const st of this.strokes) {
-      this.strokeG.fillCircle(st[0][0], st[0][1], bw / 2);
-      for (let i = 1; i < st.length; i++) {
-        this.strokeG.lineBetween(st[i - 1][0], st[i - 1][1], st[i][0], st[i][1]);
-        this.strokeG.fillCircle(st[i][0], st[i][1], bw / 2);
-      }
-    }
+    if (this.art) this.art.clear();
+    if (this.state !== 'trace' || !this.art || !this.strokes.length) return;
+    this.bakeG.clear();
+    for (const st of this.strokes) this.paintTrace(this.bakeG, st);
+    this.art.draw(this.bakeG);
+    this.bakeG.clear();
   }
 
   finishTrace() {
@@ -549,6 +577,7 @@ export class EggScene extends Phaser.Scene {
     this.nameSel = 0;
     this.guideG.clear();
     this.strokeG.clear();
+    if (this.art) this.art.clear();
     this.sampleG.clear();
     this.samplePanel.setVisible(false);
     this.hintHand.setAlpha(0);

@@ -19,6 +19,13 @@ export class DrawScene extends Phaser.Scene {
     this.cameras.main.fadeIn(250, 255, 255, 255);
     this.paper = this.add.rectangle(0, 0, 10, 10, 0xfffdf6).setOrigin(0).setDepth(-10);
     this.lineG = this.add.graphics().setDepth(-9);
+    /* art = 이미 완성된 획을 구워 둔 그림판, strokeG = 지금 긋고 있는 한 획.
+       Graphics는 매 프레임 커맨드 버퍼 전체를 다시 처리하기 때문에, 완성된 획을
+       계속 쌓아 두면 프레임 비용이 획 수에 그대로 비례한다
+       (실측: 15획 31ms/프레임, 30획 67ms, 60획이면 1.5fps로 사실상 멈춘다).
+       구워 두면 화면에 몇 획이 있든 텍스처 한 장이라 비용이 늘지 않는다. */
+    this.art = null;
+    this.bakeG = this.make.graphics({ x: 0, y: 0 }, false); // 굽기 전용 (화면에 없음)
     this.strokeG = this.add.graphics().setDepth(5);
 
     this.strokes = [];  // {pts, c, w, h0}
@@ -32,11 +39,12 @@ export class DrawScene extends Phaser.Scene {
     const endStroke = () => {
       if (!this.stroke) return;
       if (this.stroke.pts.length === 1) {
+        // 톡 찍은 점 하나 — 짧은 선분을 붙여 붓 자국이 남게 한다
         const q = this.stroke.pts[0];
         this.stroke.pts.push([q[0] + 2, q[1] + 2]);
-        this.redraw();
       }
       this.strokes.push(this.stroke);
+      this.bakeStroke(this.stroke); // 완성됐으니 그림판에 굽고 strokeG는 비운다
       this.stroke = null;
       this.drawId = null;
       if (!this.cheered && this.strokes.length >= 5) {
@@ -102,6 +110,11 @@ export class DrawScene extends Phaser.Scene {
       if (this.clearedBackup) this.clearedBackup.forEach(remap);
     }
     this._lastW = w; this._lastH = h;
+    // 그림판은 화면 크기와 같아야 한다 — 회전하면 새로 만들고 아래에서 다시 굽는다
+    if (!this.art || this.art.width !== Math.ceil(w) || this.art.height !== Math.ceil(h)) {
+      if (this.art) this.art.destroy();
+      this.art = this.add.renderTexture(0, 0, Math.ceil(w), Math.ceil(h)).setOrigin(0).setDepth(4);
+    }
     this.paper.setSize(w, h);
     this.lineG.clear();
     this.lineG.lineStyle(2, 0xf0e8d8, 1);
@@ -109,20 +122,40 @@ export class DrawScene extends Phaser.Scene {
     this.redraw();
   }
 
+  /* 획 하나를 그래픽스에 그린다 (그림판 굽기·되돌리기 재구성 공용) */
+  paintStroke(g, s) {
+    const bw = this.brushW(s.w);
+    g.fillStyle(segColor(s, 0), 1);
+    g.fillCircle(s.pts[0][0], s.pts[0][1], bw / 2);
+    for (let i = 1; i < s.pts.length; i++) {
+      const col = segColor(s, i);
+      g.lineStyle(bw, col, 1);
+      g.lineBetween(s.pts[i - 1][0], s.pts[i - 1][1], s.pts[i][0], s.pts[i][1]);
+      g.fillStyle(col, 1); // 동그란 마디로 굵은 선의 각짐을 없앤다
+      g.fillCircle(s.pts[i][0], s.pts[i][1], bw / 2);
+    }
+  }
+
+  /* 완성된 획 하나를 그림판에 굽는다 (프레임 비용이 획 수를 따라가지 않게) */
+  bakeStroke(s) {
+    this.strokeG.clear();
+    if (!this.art) return;
+    this.bakeG.clear();
+    this.paintStroke(this.bakeG, s);
+    this.art.draw(this.bakeG);
+    this.bakeG.clear();
+  }
+
+  /* 되돌리기·비우기·화면 회전처럼 전체가 달라질 때만 통째로 다시 굽는다 (일회성) */
   redraw() {
     this.strokeG.clear();
-    for (const s of this.strokes) {
-      const bw = this.brushW(s.w);
-      this.strokeG.fillStyle(segColor(s, 0), 1);
-      this.strokeG.fillCircle(s.pts[0][0], s.pts[0][1], bw / 2);
-      for (let i = 1; i < s.pts.length; i++) {
-        const col = segColor(s, i);
-        this.strokeG.lineStyle(bw, col, 1);
-        this.strokeG.lineBetween(s.pts[i - 1][0], s.pts[i - 1][1], s.pts[i][0], s.pts[i][1]);
-        this.strokeG.fillStyle(col, 1);
-        this.strokeG.fillCircle(s.pts[i][0], s.pts[i][1], bw / 2);
-      }
-    }
+    if (!this.art) return;
+    this.art.clear();
+    if (!this.strokes.length) return;
+    this.bakeG.clear();
+    for (const s of this.strokes) this.paintStroke(this.bakeG, s);
+    this.art.draw(this.bakeG);
+    this.bakeG.clear();
   }
 
   showBar() {
