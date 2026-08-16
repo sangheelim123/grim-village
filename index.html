@@ -94,6 +94,10 @@ button { font-family: inherit; cursor: pointer; border: none; }
   transition: transform 0.13s cubic-bezier(.34,1.56,.64,1); flex-shrink: 0; font-size: 25px;
   display: flex; align-items: center; justify-content: center; background: #fff;
 }
+.pick-btn { position: relative; }
+/* 좌우로는 간격의 절반(≤5px)만 — 이웃 버튼과 과녁이 겹치면 오히려 잘못 눌린다.
+   위아래는 옆에 아무것도 없으므로 넉넉히 넓힌다. */
+.pick-btn::after { content: ''; position: absolute; inset: -9px -5px; border-radius: 50%; }
 .pick-btn:active { transform: scale(0.86); }
 .pick-btn.sel { outline: 5px solid #ffd21e; transform: scale(1.12); }
 .soul-btn {
@@ -150,7 +154,7 @@ button { font-family: inherit; cursor: pointer; border: none; }
 /* 오버레이 공통 ✕ — 스크롤과 무관하게 항상 같은 자리에 떠 있다 */
 .overlay-x {
   position: sticky; top: 0; float: right; margin: -6px -6px 0 0; z-index: 5;
-  width: 46px; height: 46px; border-radius: 50%; font-size: 22px; font-weight: 800;
+  width: 50px; height: 50px; border-radius: 50%; font-size: 23px; font-weight: 800;
   background: #ffe3d0; color: #d95f33; box-shadow: 0 3px 0 #e8b898;
 }
 .overlay-x:active { transform: scale(0.9); }
@@ -164,10 +168,13 @@ button { font-family: inherit; cursor: pointer; border: none; }
   position: relative;
 }
 .fav-btn {
-  position: absolute; top: 4px; right: 4px; z-index: 2;
-  width: 34px; height: 34px; border-radius: 50%; font-size: 18px;
+  position: absolute; top: 2px; right: 2px; z-index: 2;
+  width: 44px; height: 44px; border-radius: 50%; font-size: 21px;
   background: rgba(255,255,255,0.9); box-shadow: 0 2px 0 #efe2c8;
 }
+/* 보이는 크기는 그대로 두고 누를 수 있는 범위만 넓힌다 — 유아 손가락은
+   조준이 부정확해서, 보이는 것보다 조금 큰 과녁이 필요하다 */
+.fav-btn::after { content: ''; position: absolute; inset: -5px; border-radius: 50%; }
 .fav-btn:active { transform: scale(0.85); }
 .book-card canvas { border-radius: 12px; }
 .book-name { font-size: 15px; color: #4a3f35; }
@@ -193,7 +200,7 @@ button { font-family: inherit; cursor: pointer; border: none; }
 #parent-box h3 { font-size: 15px; color: #4a3f35; margin: 14px 0 6px; }
 .preset-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .preset-btn {
-  flex: 1; min-width: 110px; padding: 10px 4px; border-radius: 14px; font-size: 14px; font-weight: 700;
+  flex: 1; min-width: 110px; padding: 14px 4px; border-radius: 14px; font-size: 14px; font-weight: 700;
   background: #eef4f8; color: #4a6a80; box-shadow: 0 3px 0 #d0dde5;
 }
 .preset-btn.sel { background: #56b4ec; color: #fff; box-shadow: 0 3px 0 #2a7ab0; }
@@ -216,10 +223,12 @@ button { font-family: inherit; cursor: pointer; border: none; }
   .act-btn { height: 50px; min-width: 96px; padding: 0 14px; font-size: clamp(16px, 4.4vmin, 20px); border-radius: 18px; }
   .act-btn.small { width: 46px; min-width: 0; padding: 0; font-size: 21px; }
   .pick-btn { width: 36px; height: 36px; border-width: 3px; font-size: 17px; }
+  .pick-btn::after { inset: -8px -3px; } /* 간격이 6px이라 좌우는 절반만 */
   .pick-btn.sel { outline-width: 4px; transform: scale(1.1); }
 }
 @media (max-width: 360px) {
   .pick-btn { width: 31px; height: 31px; border-width: 2px; }
+  .pick-btn::after { inset: -8px -2px; }
   .act-btn { min-width: 84px; height: 46px; }
 }
 
