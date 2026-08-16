@@ -24,7 +24,7 @@ const IMG_KEYS = ['sky_day','sky_night','sky_egg','sky_feed','sky_sort','sky_roa
   'island_platform','glow','butterfly','bird','hills_far','hills_near','ground','cloud1','cloud2','sun','moon',
   'flower1','flower2','flower3','rainbow','fountain','grass','sign_road','sign_egg','sign_feed','sign_sort','sign_aqua',
   'easel','nest','egg_big','flag','house','plate','basket','tree','apple','orange','grape','strawberry',
-  'hand','heart','sparkle','star','dot','face_bunny','face_bear','btn_round','btn_pill','btn_pill_blue',
+  'hand','heart','sparkle','star','dot','leaf','face_bunny','face_bear','btn_round','btn_pill','btn_pill_blue',
   'panel','pill_bg','bubble','candy_circle','candy_tri','candy_square'];
 const SFX_KEYS = ['tap','pop','success','fanfare','star','boing','nom','squeak','hatch','whoosh','grow','bgm'];
 
