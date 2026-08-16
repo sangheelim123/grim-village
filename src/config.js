@@ -1,6 +1,6 @@
 /* 앱 버전 — 릴리스마다 올린다 (첫 화면 구석·부모 코너에 표시).
    sw.js의 CACHE 상수도 함께 올려야 설치된 PWA에 새 버전이 전달된다 */
-export const VERSION = '1.6.1';
+export const VERSION = '1.6.2';
 
 /* 판정·밸런스 상수 — 전부 관대한 쪽이 기본값 */
 export const TUNING = {

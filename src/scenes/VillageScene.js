@@ -43,16 +43,27 @@ function saveWx(t) {
     }));
   } catch (e) {}
 }
+const WX_KINDS = ['clear', 'rain', 'snow', 'wind'];
 function loadWx(t) {
   wxLoaded = true;
   try {
     const d = JSON.parse(localStorage.getItem(WX_KEY) || 'null');
     if (!d || !d.at) return;
     const gap = (Date.now() - d.at) / 1000;
-    if (gap < 0 || gap > WEATHER.resumeSec) return; // 오래 비웠다 — 새로 시작한다
-    wx.kind = d.k; wx.want = d.w; wx.i = d.i; wx.lastKind = d.l; wx.dir = d.d;
-    wx.snow = d.s; wx.wet = d.e;
-    wx.until = t + Math.max(5, d.r - gap); // 자리를 비운 만큼 일정도 흘러 있다
+    if (!isFinite(gap) || gap < 0 || gap > WEATHER.resumeSec) return; // 오래 비웠다 — 새로 시작한다
+    /* 저장값은 언제든 망가질 수 있다 (쓰다 만 값, 옛 버전이 남긴 값, 손으로 고친 값).
+       한 글자만 이상해도 마을이 영영 어둡거나 멈춘 채로 남으므로 반드시 검산한다.
+       예: 세기가 문자열이면 NaN이 되어 날씨가 멈추고, 99면 1분 넘게 캄캄해진다. */
+    const num = (v, dflt) => (typeof v === 'number' && isFinite(v) ? clamp(v, 0, 1) : dflt);
+    if (!WX_KINDS.includes(d.k) || !WX_KINDS.includes(d.w)) return;
+    wx.kind = d.k; wx.want = d.w;
+    wx.i = num(d.i, 0);
+    wx.dir = d.d === -1 ? -1 : 1;
+    wx.lastKind = WX_KINDS.includes(d.l) ? d.l : null;
+    wx.snow = num(d.s, 0);
+    wx.wet = num(d.e, 0);
+    const rest = (typeof d.r === 'number' && isFinite(d.r)) ? d.r : 20;
+    wx.until = t + clamp(rest - gap, 5, 600); // 자리를 비운 만큼 일정도 흘러 있다
   } catch (e) {}
 }
 const WX_INFO = {
