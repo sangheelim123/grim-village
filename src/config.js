@@ -1,6 +1,6 @@
 /* 앱 버전 — 릴리스마다 올린다 (첫 화면 구석·부모 코너에 표시).
    sw.js의 CACHE 상수도 함께 올려야 설치된 PWA에 새 버전이 전달된다 */
-export const VERSION = '1.4.2';
+export const VERSION = '1.5.0';
 
 /* 판정·밸런스 상수 — 전부 관대한 쪽이 기본값 */
 export const TUNING = {
@@ -20,6 +20,19 @@ export const TUNING = {
      숨겨도 언제든 다시 볼 수 있다 — 기억은 도전이지 시험이 아니다. */
   memoryShowMs: 4500,
   memoryPeekMs: 3000,
+};
+
+/* 날씨: 비·눈·바람이 손님처럼 잠깐 왔다 간다 (맑음이 기본값).
+   궂은 날씨에도 벌은 없다 — 친구들은 '못 논다'가 아니라 '다르게 논다'.
+   유아의 시간 감각을 생각해 한 번 온 날씨는 30~45초쯤 머문다
+   (너무 짧으면 알아채기 전에 끝나고, 너무 길면 마을이 답답해진다). */
+export const WEATHER = {
+  firstSec: [16, 30],  // 마을에 들어온 뒤 첫 날씨까지
+  clearSec: [55, 95],  // 맑은 하늘이 이어지는 시간
+  spellSec: [30, 46],  // 비·눈·바람이 머무는 시간
+  fadeSec: 7,          // 시작·끝 페이드 (뚝 끊기면 놀란다)
+  weight: { rain: 0.38, wind: 0.34, snow: 0.28 },
+  snowNightBoost: 2,   // 밤에는 눈이 더 자주 (밤+눈이 제일 예쁘다)
 };
 
 export const COLORS = {

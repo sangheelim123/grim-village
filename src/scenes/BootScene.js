@@ -18,7 +18,7 @@ const IMGS = [
   ['basket', 260, 208], ['tree', 546, 624],
   ['apple', 132, 144], ['orange', 132, 139], ['grape', 132, 156], ['strawberry', 132, 144],
   ['hand', 108, 132], ['heart', 96, 89], ['sparkle', 84, 84], ['star', 156, 151],
-  ['dot', 64, 64],
+  ['dot', 64, 64], ['leaf', 76, 60],
   ['face_bunny', 286, 312], ['face_bear', 286, 286],
   ['btn_round', 156, 156], ['btn_pill', 360, 120], ['btn_pill_blue', 360, 120],
   ['panel', 480, 360], ['pill_bg', 480, 101], ['bubble', 390, 208],

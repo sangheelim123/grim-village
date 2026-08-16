@@ -64,6 +64,7 @@ export const audio = {
     this.on = v;
     try { localStorage.setItem('village-v4-sound', v ? '1' : '0'); } catch (e) {}
     if (!v) this.stopSpeak();
+    this._applyWx();
   },
   setBgm(v) {
     this.bgmOn = v;
@@ -138,8 +139,86 @@ export const audio = {
     } catch (e) { this._filter = false; }
     return this._filter;
   },
+  /* 날씨 소리: 새 음원 파일 없이 화이트 노이즈를 필터로 빚는다.
+     비는 밝은 '쉬익', 바람은 낮은 '웅웅' + 아주 느린 LFO로 돌풍이 밀려온다.
+     유아용이므로 음량은 아주 작게 — 말소리를 절대 덮으면 안 된다.
+     (눈은 일부러 무음이다. 그 고요함이 눈의 성격이다) */
+  _wx: null,
+  _wxLevel: 0,
+  _ensureWx() {
+    if (this._wx !== null) return this._wx;
+    this._wx = false;
+    try {
+      const mgr = this.scene && this.scene.sound;
+      const ctx = mgr && mgr.context;
+      if (!ctx || !ctx.createBufferSource) return false;
+      const len = Math.floor(ctx.sampleRate * 2);
+      const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+      // 루프 이음매 크로스페이드 — 없으면 2초마다 '틱' 소리가 난다
+      const xf = Math.floor(ctx.sampleRate * 0.02);
+      for (let i = 0; i < xf; i++) {
+        const k = i / xf;
+        d[i] = d[i] * k + d[len - xf + i] * (1 - k);
+      }
+      const src = ctx.createBufferSource();
+      src.buffer = buf; src.loop = true;
+      const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 700; hp.Q.value = 0.5;
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 5000; lp.Q.value = 0.6;
+      const g = ctx.createGain(); g.gain.value = 0;
+      src.connect(hp); hp.connect(lp); lp.connect(g); g.connect(ctx.destination);
+      const lfo = ctx.createOscillator(); lfo.frequency.value = 0.085;
+      const lfoF = ctx.createGain(); lfoF.gain.value = 0;   // 컷오프를 밀고 당긴다
+      const lfoG = ctx.createGain(); lfoG.gain.value = 0;   // 음량을 함께 부풀린다
+      lfo.connect(lfoF); lfoF.connect(lp.frequency);
+      lfo.connect(lfoG); lfoG.connect(g.gain);
+      lfo.start(); src.start();
+      this._wx = { src, hp, lp, g, lfoF, lfoG, ctx, kind: null };
+      /* 앱이 뒤로 가면 게임 루프가 멈춰 세기 갱신도 멈춘다 —
+         이 노드는 Phaser 사운드 매니저 밖이라 직접 꺼 주지 않으면
+         다른 앱을 쓰는 내내 빗소리가 계속 난다 */
+      document.addEventListener('visibilitychange', () => this._applyWx());
+    } catch (e) { this._wx = false; }
+    return this._wx;
+  },
+  _applyWx() {
+    const wx = this._wx;
+    if (!wx) return;
+    const awake = !(typeof document !== 'undefined' && document.hidden);
+    const lvl = (this.on && awake ? this._wxLevel : 0) * (this._curPri != null ? 0.3 : 1);
+    try {
+      wx.g.gain.setTargetAtTime(lvl, wx.ctx.currentTime, 0.6);
+      wx.lfoG.gain.setTargetAtTime(wx.kind === 'wind' ? lvl * 0.55 : 0, wx.ctx.currentTime, 0.6);
+    } catch (e) {}
+  },
+  setWeather(kind, level) {
+    const wanted = level > 0.02 && (kind === 'rain' || kind === 'wind');
+    if (!wanted && !this._wx) return;   // 필요해질 때까지 오디오 노드를 만들지 않는다
+    const wx = this._ensureWx();
+    if (!wx) return;
+    this._wxLevel = wanted ? (kind === 'rain' ? 0.05 : 0.045) * level : 0;
+    if (wanted && wx.kind !== kind) {
+      wx.kind = kind;
+      const t = wx.ctx.currentTime;
+      try {
+        if (kind === 'rain') {
+          wx.hp.frequency.setTargetAtTime(800, t, 0.5);
+          wx.lp.frequency.setTargetAtTime(5200, t, 0.5);
+          wx.lfoF.gain.value = 0;
+        } else {
+          wx.hp.frequency.setTargetAtTime(60, t, 0.5);
+          wx.lp.frequency.setTargetAtTime(430, t, 0.5);
+          wx.lfoF.gain.value = 200;
+        }
+      } catch (e) {}
+    }
+    this._applyWx();
+  },
+
   /* 말할 때 배경음을 낮춘다 — 4세는 소음 속 말소리 분리가 어렵다 */
   duck(on) {
+    this._applyWx();
     if (!this._bgm) return;
     const base = this.bgmOn ? (this._mood ? this._mood.vol : 0.5) : 0;
     const to = on ? base * 0.3 : base;
