@@ -108,6 +108,11 @@ export class AquaScene extends Phaser.Scene {
 
     // ---- 그리기 모드용 종이 ----
     this.paper = this.add.rectangle(0, 0, 10, 10, 0xfffdf6).setOrigin(0).setDepth(40).setVisible(false);
+    /* art = 이미 완성된 획을 구워 둔 판, strokeG = 지금 긋고 있는 한 획.
+       Graphics는 매 프레임 커맨드 버퍼 전체를 다시 처리하므로 획을 쌓아 두면
+       프레임 비용이 획 수에 비례한다 (실측: 10획 21ms/프레임). */
+    this.art = null;
+    this.bakeG = this.make.graphics({ x: 0, y: 0 }, false); // 굽기 전용 (화면에 없음)
     this.strokeG = this.add.graphics().setDepth(45);
 
     this.fishObjs = [];
@@ -164,6 +169,7 @@ export class AquaScene extends Phaser.Scene {
     this.state = 'swim';
     this.paper.setVisible(false);
     this.strokeG.clear();
+    if (this.art) this.art.clear(); // 구워 둔 획도 함께 걷는다 (물속으로 들어간다)
     ui.setPill('물속을 콕! 누르면 먹이가 퐁당!');
     ui.setActionBar('<button class="act-btn" id="aq-draw">🖍️ 새 물고기 그리기</button>');
     document.getElementById('aq-draw').addEventListener('click', () => {
@@ -251,6 +257,7 @@ export class AquaScene extends Phaser.Scene {
       this.stroke.pts.push([q[0] + 2, q[1] + 2]);
     }
     this.strokes.push(this.stroke);
+    this.bakeStroke(this.stroke); // 완성된 획은 판에 굽고 strokeG는 비운다
     this.stroke = null;
     this.drawId = null;
     if (!this.cheered && this.strokes.length >= 5) {
@@ -263,21 +270,37 @@ export class AquaScene extends Phaser.Scene {
     return Phaser.Display.Color.HSLToColor(((stroke.h0 + i * 5) % 360) / 360, 0.85, 0.6).color;
   }
 
+  paintStroke(g, s) {
+    const bw = this.brushW(s.w);
+    g.fillStyle(this.segTint(s, 0), 1);
+    g.fillCircle(s.pts[0][0], s.pts[0][1], bw / 2);
+    for (let i = 1; i < s.pts.length; i++) {
+      const col = this.segTint(s, i);
+      g.lineStyle(bw, col, 1);
+      g.lineBetween(s.pts[i - 1][0], s.pts[i - 1][1], s.pts[i][0], s.pts[i][1]);
+      g.fillStyle(col, 1);
+      g.fillCircle(s.pts[i][0], s.pts[i][1], bw / 2);
+    }
+  }
+
+  bakeStroke(s) {
+    this.strokeG.clear();
+    if (!this.art || !s) return;
+    this.bakeG.clear();
+    this.paintStroke(this.bakeG, s);
+    this.art.draw(this.bakeG);
+    this.bakeG.clear();
+  }
+
+  /* 되돌리기·비우기·화면 회전처럼 전체가 달라질 때만 통째로 다시 굽는다 (일회성) */
   redraw() {
     this.strokeG.clear();
-    if (this.state !== 'draw') return;
-    for (const s of this.strokes) {
-      const bw = this.brushW(s.w);
-      this.strokeG.fillStyle(this.segTint(s, 0), 1);
-      this.strokeG.fillCircle(s.pts[0][0], s.pts[0][1], bw / 2);
-      for (let i = 1; i < s.pts.length; i++) {
-        const col = this.segTint(s, i);
-        this.strokeG.lineStyle(bw, col, 1);
-        this.strokeG.lineBetween(s.pts[i - 1][0], s.pts[i - 1][1], s.pts[i][0], s.pts[i][1]);
-        this.strokeG.fillStyle(col, 1);
-        this.strokeG.fillCircle(s.pts[i][0], s.pts[i][1], bw / 2);
-      }
-    }
+    if (this.art) this.art.clear();
+    if (this.state !== 'draw' || !this.art || !this.strokes.length) return;
+    this.bakeG.clear();
+    for (const s of this.strokes) this.paintStroke(this.bakeG, s);
+    this.art.draw(this.bakeG);
+    this.bakeG.clear();
   }
 
   /* ---------- 살아나라! ---------- */
@@ -462,6 +485,11 @@ export class AquaScene extends Phaser.Scene {
   /* ---------- 레이아웃 (회전·리사이즈 시 그리던 그림 보존) ---------- */
   layout() {
     const { width: w, height: h } = this.scale;
+    // 구운 획 판은 화면 크기와 같아야 한다 (회전하면 새로 만들고 다시 굽는다)
+    if (!this.art || this.art.width !== Math.ceil(w) || this.art.height !== Math.ceil(h)) {
+      if (this.art) this.art.destroy();
+      this.art = this.add.renderTexture(0, 0, Math.ceil(w), Math.ceil(h)).setOrigin(0).setDepth(44);
+    }
     if (this._lastW && (this._lastW !== w || this._lastH !== h)) {
       const sc = Math.min(w / this._lastW, h / this._lastH);
       const ox = (w - this._lastW * sc) / 2, oy = (h - this._lastH * sc) / 2;
