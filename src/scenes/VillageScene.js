@@ -22,7 +22,35 @@ const ISLANDS = [
    this.time.now는 게임 시작 기준이라 씬을 넘어 연속이다.
    kind = 지금 화면에 그려지는 날씨, want = 일정표가 말하는 날씨.
    둘이 다르면 먼저 i를 0까지 내린 뒤에 갈아탄다 (날씨가 뚝 바뀌지 않게). */
-const wx = { kind: 'clear', want: 'clear', i: 0, until: 0, dir: 1, snow: 0, wet: 0, gust: 0.6 };
+const wx = { kind: 'clear', want: 'clear', i: 0, until: 0, dir: 1, snow: 0, wet: 0, gust: 0.6, lastKind: null };
+
+/* 앱을 완전히 껐다 켜면 모듈 변수도 함께 사라진다 — 잠깐 자리를 비운 사이라면
+   비가 그대로 내리고 있어야 세계가 이어진다. 오래 지났으면 새 하루처럼 맑음부터.
+   프로필별 저장이 아니라 '마을의 지금'이므로 store와는 다른 키를 쓴다. */
+const WX_KEY = 'village-v4-wx';
+let wxLoaded = false;
+function saveWx(t) {
+  try {
+    localStorage.setItem(WX_KEY, JSON.stringify({
+      k: wx.kind, w: wx.want, i: +wx.i.toFixed(2), l: wx.lastKind, d: wx.dir,
+      s: +wx.snow.toFixed(2), e: +wx.wet.toFixed(2),
+      r: Math.max(0, Math.round(wx.until - t)), // 남은 시간 (게임 시각은 재시작하면 0부터라 저장 불가)
+      at: Date.now(),
+    }));
+  } catch (e) {}
+}
+function loadWx(t) {
+  wxLoaded = true;
+  try {
+    const d = JSON.parse(localStorage.getItem(WX_KEY) || 'null');
+    if (!d || !d.at) return;
+    const gap = (Date.now() - d.at) / 1000;
+    if (gap < 0 || gap > WEATHER.resumeSec) return; // 오래 비웠다 — 새로 시작한다
+    wx.kind = d.k; wx.want = d.w; wx.i = d.i; wx.lastKind = d.l; wx.dir = d.d;
+    wx.snow = d.s; wx.wet = d.e;
+    wx.until = t + Math.max(5, d.r - gap); // 자리를 비운 만큼 일정도 흘러 있다
+  } catch (e) {}
+}
 const WX_INFO = {
   rain: {
     toast: '🌧️ 비가 내려요',
@@ -176,6 +204,7 @@ export class VillageScene extends Phaser.Scene {
     this.birds = addFlyers(this, 2, { key: 'bird', y0: 0.12, y1: 0.28, depth: -85, scale: 0.7, tint: 0xa8c0d8 });
 
     this.wx = wx; // 디버그·테스트에서 들여다볼 수 있게
+    if (!wxLoaded) loadWx(this.time.now / 1000); // 페이지 수명당 한 번만
     this.createWeather();
 
     this.layout();
@@ -192,6 +221,7 @@ export class VillageScene extends Phaser.Scene {
     this.events.once('shutdown', () => {
       this.scale.off('resize', this.layout, this);
       audio.setWeather('clear', 0); // 마을을 떠나면 빗소리·바람소리도 함께 멎는다
+      saveWx(this.time.now / 1000);  // 섬에서 앱이 꺼져도 마지막 날씨는 남는다
       for (const w of this.walkers) if (w.destroyTexture) w.destroyTexture();
     });
 
@@ -554,6 +584,7 @@ export class VillageScene extends Phaser.Scene {
     if (Math.abs(wx.wet - this._wetDrawn) > 0.04) { this._wetDrawn = wx.wet; this.drawPuddles(); }
     for (const c of this.snowCaps) c.setAlpha(wx.snow * 0.82);
     if (Math.abs(wx.i - this._wxAppliedI) > 0.08) { this._wxAppliedI = wx.i; this.syncWeatherEmitters(); }
+    if (t - (this._wxSavedAt || 0) > 4) { this._wxSavedAt = t; saveWx(t); }
     // 소리는 계단식으로만 갱신한다 (매 프레임 setTargetAtTime을 쌓지 않는다)
     const lvl = Math.round(wx.i * 8) / 8;
     if (lvl !== this._wxSndI || wx.kind !== this._wxSndKind) {
@@ -563,27 +594,48 @@ export class VillageScene extends Phaser.Scene {
     return { rainI, snowI, windI: wx.kind === 'wind' ? wx.i : 0 };
   }
 
+  /* 무슨 날씨가 올지 고르기.
+     - 밤에는 눈 가중치가 올라간다 (유일하게 의도한 편향 — 밤+눈이 제일 예쁘다)
+     - 직전과 같은 날씨는 확률을 낮춘다. 완전 균등 난수는 "또 비야?"가 자주 나와
+       오히려 규칙처럼 느껴진다 (pickVary가 대사에 쓰는 것과 같은 생각).
+     - hard=true면 아예 제외한다 (맑음 없이 곧바로 이어질 때는 같은 날씨면 안 된다) */
+  pickWeather(avoid, hard) {
+    const night = (this._nf || 0) > 0.5;
+    const w = {
+      rain: WEATHER.weight.rain,
+      wind: WEATHER.weight.wind,
+      snow: WEATHER.weight.snow * (night ? WEATHER.snowNightBoost : 1),
+    };
+    if (avoid && w[avoid] != null) w[avoid] *= hard ? 0 : WEATHER.repeatDamp;
+    const ent = Object.entries(w);
+    let r = Math.random() * ent.reduce((a, b) => a + b[1], 0);
+    for (const [k, v] of ent) if ((r -= v) <= 0) return k;
+    return ent[0][0];
+  }
+
   rollWeather(t) {
-    if (wx.want === 'clear') {
-      const night = (this._nf || 0) > 0.5;
-      const wgt = [
-        ['rain', WEATHER.weight.rain],
-        ['wind', WEATHER.weight.wind],
-        ['snow', WEATHER.weight.snow * (night ? WEATHER.snowNightBoost : 1)],
-      ];
-      let r = Math.random() * wgt.reduce((a, b) => a + b[1], 0);
-      let kind = wgt[0][0];
-      for (const [k, v] of wgt) { if ((r -= v) <= 0) { kind = k; break; } }
+    // 짧은 쪽으로 치우친 난수 — 균등하면 길이가 늘 비슷해 '주기'처럼 들킨다
+    const span = ([a, b]) => a + (b - a) * Math.pow(Math.random(), WEATHER.skew);
+    const startSpell = (avoid, hard) => {
+      const kind = this.pickWeather(avoid, hard);
       wx.want = kind;
       wx.dir = Math.random() < 0.5 ? -1 : 1;
-      wx.until = t + rand(WEATHER.spellSec[0], WEATHER.spellSec[1]);
+      wx.until = t + span(WEATHER.spellSec);
       this.onWeatherStart(kind);
-    } else {
-      const prev = wx.want;
-      wx.want = 'clear';
-      wx.until = t + rand(WEATHER.clearSec[0], WEATHER.clearSec[1]);
-      this.onWeatherEnd(prev);
+    };
+    if (wx.want === 'clear') { startSpell(wx.lastKind); return; }
+
+    const prev = wx.want;
+    wx.lastKind = prev;
+    /* 궂은 날씨 뒤에 반드시 맑음이 오면 그 교대 자체가 규칙이 된다 —
+       가끔은 맑음을 건너뛰고 다른 날씨가 바로 이어진다 (비 그치자마자 바람) */
+    if (Math.random() < WEATHER.chainChance) {
+      startSpell(prev, true); // 대피해 있던 친구들은 onWeatherStart가 마당으로 내보낸다
+      return;
     }
+    wx.want = 'clear';
+    wx.until = t + span(WEATHER.clearSec);
+    this.onWeatherEnd(prev);
   }
 
   /* 테스트·디버그용 즉시 전환 */
