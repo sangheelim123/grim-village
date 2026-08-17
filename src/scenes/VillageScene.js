@@ -752,7 +752,11 @@ export class VillageScene extends Phaser.Scene {
     /* 번개 줄기: 번쩍 나타나 잠깐 깜박이다 천천히 사라진다.
        섬광(화면 전체)은 짧게 끝나지만 줄기는 1초쯤 남아 있어야 아이가 알아본다. */
     const bg = this.boltG;
+    /* 앞 번개가 아직 사그라드는 중이면 killTweensOf가 그 체인의 onComplete를 건너뛴다 —
+       그러면 커맨드 버퍼가 남고, Graphics는 alpha가 0이어도 매 프레임 버퍼를 통째로
+       다시 처리한다. 새로 그리기 전에 여기서 확실히 비운다. */
     this.tweens.killTweensOf(bg);
+    bg.clear();
     this.drawBolt();
     const ms = WEATHER.boltMs;
     this.tweens.chain({
@@ -1182,7 +1186,9 @@ export class VillageScene extends Phaser.Scene {
       cont.setPosition(isl.nx * w, isl.ny * h);
       cont.imgRef.setScale(signScale * (isl.sc || 1));
       cont.labelRef.setPosition(0, cont.imgRef.displayHeight * 0.62).setFontSize(Math.max(17, 24 * signScale));
-      cont.platRef.setScale(signScale * (isl.sc || 1) * 1.05)
+      /* 1.14 = 1.05 / 0.92 — 발판 SVG 안에서 그림을 0.92로 줄여 테두리 자리를 만들었다.
+         그만큼 되돌려 놓아야 예전과 같은 크기로 보인다. */
+      cont.platRef.setScale(signScale * (isl.sc || 1) * 1.14)
         .setPosition(0, cont.imgRef.displayHeight * 0.42);
       cont.setSize(cont.imgRef.displayWidth, cont.imgRef.displayHeight + 30);
       // 컨테이너 히트 영역은 (0,0,w,h) 좌상단 규약 (common.js pressify 참고)
