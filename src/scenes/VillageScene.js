@@ -22,7 +22,10 @@ const ISLANDS = [
    this.time.now는 게임 시작 기준이라 씬을 넘어 연속이다.
    kind = 지금 화면에 그려지는 날씨, want = 일정표가 말하는 날씨.
    둘이 다르면 먼저 i를 0까지 내린 뒤에 갈아탄다 (날씨가 뚝 바뀌지 않게). */
-const wx = { kind: 'clear', want: 'clear', i: 0, until: 0, dir: 1, snow: 0, wet: 0, gust: 0.6, lastKind: null };
+/* 무지개는 하늘의 배경이지 주인공이 아니다 — 크고 진하면 마을을 덮어 버린다 */
+const RAINBOW_ALPHA = 0.42;
+
+const wx = { kind: 'clear', want: 'clear', i: 0, until: 0, dir: 1, snow: 0, wet: 0, gust: 0.6, lastKind: null, boltAt: 0 };
 
 /* 파티클 품질(1 = 최상). 기기 성능은 씬을 오간다고 달라지지 않으므로
    한 번 알아낸 값을 마을을 드나들어도 유지한다 — 매번 다시 버벅이며 배우지 않게. */
@@ -102,8 +105,10 @@ export class VillageScene extends Phaser.Scene {
       this.stars.push(s);
     }
     // 해·달: 왼쪽 지평선에서 떠서 가운데를 지나 오른쪽으로 진다 (update가 위치를 몬다)
-    this.sun = this.add.image(0, 0, 'sun').setDepth(-88);
-    this.moon = this.add.image(0, 0, 'moon').setDepth(-88).setAlpha(0);
+    /* 해·달은 언덕(-70/-60)보다 앞에 둔다 — 뒤에 두면 궤적의 절반이 언덕에 가려
+       "떴다 진다"가 잘 안 보인다. 땅(-50)보다는 뒤라 질 때는 여전히 땅 뒤로 잠긴다. */
+    this.sun = this.add.image(0, 0, 'sun').setDepth(-52);
+    this.moon = this.add.image(0, 0, 'moon').setDepth(-52).setAlpha(0);
     this.cycleOffset = 0; // 테스트·디버그용 시간 이동
     this.tweens.add({ targets: [this.sun, this.moon], angle: 6, duration: 3000, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     // 해님·달님도 만질 수 있다 (탭 보상 문법 그대로)
@@ -122,7 +127,7 @@ export class VillageScene extends Phaser.Scene {
       });
     }
 
-    this.rainbowImg = this.add.image(0, 0, 'rainbow').setDepth(-72).setAlpha(P.decor.includes('rainbow') ? 0.85 : 0);
+    this.rainbowImg = this.add.image(0, 0, 'rainbow').setDepth(-72).setAlpha(P.decor.includes('rainbow') ? RAINBOW_ALPHA : 0);
     this.hillsFar = this.add.image(0, 0, 'hills_far').setOrigin(0.5, 1).setDepth(-70);
     this.hillsNear = this.add.image(0, 0, 'hills_near').setOrigin(0.5, 1).setDepth(-60);
     this.groundImg = this.add.image(0, 0, 'ground').setOrigin(0.5, 1).setDepth(-50);
@@ -290,7 +295,7 @@ export class VillageScene extends Phaser.Scene {
         ui.toast(`✨ 마을에 ${d.name}이(가) 생겼어요!`);
         audio.grow();
         setTimeout(() => audio.speak(`마을에 ${d.name}이 생겼어요!`), 400);
-        if (d.key === 'rainbow') this.tweens.add({ targets: this.rainbowImg, alpha: 0.85, duration: 1200 });
+        if (d.key === 'rainbow') this.tweens.add({ targets: this.rainbowImg, alpha: RAINBOW_ALPHA, duration: 1200 });
         if (d.key === 'fountain') this.fountainImg.setVisible(true);
         this.layout();
       }
@@ -531,6 +536,10 @@ export class VillageScene extends Phaser.Scene {
       im.src = src;
       return im;
     });
+    /* 번개 섬광: 화면 전체를 덮는 흰 막. 평소엔 alpha 0이라 그려지지도 않는다.
+       가장 위(60)에 두어야 비·친구·간판까지 한꺼번에 번쩍인다. */
+    this.boltFlash = this.add.rectangle(0, 0, 10, 10, 0xffffff)
+      .setOrigin(0).setDepth(60).setAlpha(0).setScrollFactor(0);
     /* 비 온 뒤 물웅덩이 — 비가 그쳐도 세계에 자국이 남고 천천히 마른다 */
     this.puddleG = this.add.graphics().setDepth(-44);
     this._wetDrawn = -1;
@@ -632,6 +641,15 @@ export class VillageScene extends Phaser.Scene {
 
     const rainI = wx.kind === 'rain' ? wx.i : 0;
     const snowI = wx.kind === 'snow' ? wx.i : 0;
+    /* 번개는 비가 굵어졌을 때만. 첫 번째는 비가 시작되고 한참 뒤에 오도록
+       예약을 비 자체보다 늦게 잡는다 — 들어오자마자 번쩍이면 놀이가 아니라 습격이다. */
+    if (rainI >= WEATHER.boltMinI) {
+      if (!wx.boltAt) wx.boltAt = t + rand(WEATHER.boltGapSec[0], WEATHER.boltGapSec[1]);
+      else if (t >= wx.boltAt) {
+        wx.boltAt = t + rand(WEATHER.boltGapSec[0], WEATHER.boltGapSec[1]);
+        this.bolt();
+      }
+    } else wx.boltAt = 0;
     // 젖고 마르고, 쌓이고 녹는다 — 날씨보다 느리게 움직여야 세계가 두꺼워진다
     wx.wet = clamp(wx.wet + (rainI > 0.3 ? dt / 14 : -dt / 45), 0, 1);
     wx.snow = clamp(wx.snow + (snowI > 0.3 ? dt / 20 : -dt / 50), 0, 1);
@@ -666,6 +684,57 @@ export class VillageScene extends Phaser.Scene {
     let r = Math.random() * ent.reduce((a, b) => a + b[1], 0);
     for (const [k, v] of ent) if ((r -= v) <= 0) return k;
     return ent[0][0];
+  }
+
+  /* ───────── 천둥번개 ─────────
+     무서운 연출이 아니라 '깜짝 놀랐다가 웃는' 순간을 만든다.
+     섬광은 두 번을 넘지 않고(광과민성), 소리는 0.6초 뒤에 멀리서 우르릉 하며,
+     친구들은 겁먹는 게 아니라 폴짝 뛰고 서로를 쳐다본다. */
+  bolt() {
+    if (!this.boltFlash) return;
+    const night = (this._nf || 0) > 0.5;
+    const peak = night ? WEATHER.boltAlphaNight : WEATHER.boltAlphaDay;
+    const f = this.boltFlash;
+    this.tweens.killTweensOf(f);
+    f.setAlpha(0);
+    /* 번쩍 → 사그라듦 → 한 번 더 여리게. 두 번뿐이고 총 0.9초 안에 끝난다. */
+    this.tweens.chain({
+      targets: f,
+      tweens: [
+        { alpha: peak, duration: 60, ease: 'Quad.easeOut' },
+        { alpha: peak * 0.12, duration: 130, ease: 'Quad.easeIn' },
+        { alpha: peak * 0.55, duration: 70, delay: 90, ease: 'Quad.easeOut' },
+        { alpha: 0, duration: 420, ease: 'Sine.easeIn' },
+      ],
+    });
+    // 소리는 빛보다 늦게 온다 — 그 사이가 '멀리 있다'는 느낌을 만든다
+    this.time.delayedCall(rand(450, 800), () => {
+      if (this.scene.isActive()) audio.thunder(night ? 0.75 : 1);
+    });
+    this.time.delayedCall(120, () => this.startleWalkers());
+  }
+
+  /* 깜짝! — 친구들이 동시에 폴짝 뛰고 잠깐 몸을 움츠린다 */
+  startleWalkers() {
+    if (!this.scene.isActive()) return;
+    this.walkers.forEach((c, i) => {
+      if (!c.active) return;
+      if (c.sleeping) this.wakeUp(c); // 자던 친구도 깬다
+      this.time.delayedCall(i * 45, () => {
+        if (!c.active || !this.scene.isActive()) return;
+        c._angleLock = true; // 이 동안은 바람 기울기가 끼어들지 않는다
+        this.tweens.add({
+          targets: c, y: c.y - 16, duration: 130, yoyo: true, ease: 'Quad.easeOut',
+          onComplete: () => { c._angleLock = false; },
+        });
+        this.tweens.add({ targets: c, angle: { from: -7, to: 7 }, duration: 70, yoyo: true, repeat: 2,
+          onComplete: () => c.setAngle(0) });
+      });
+    });
+    // 전부 띄우면 어수선하다 — 두 명만 놀란 표정
+    this.walkers.slice(0, 2).forEach(c => this.emoteAt(c, pick(['😮', '💦', '⚡'])));
+    audio.speak(pick(['우르릉! 깜짝이야!', '번쩍! 친구들이 깜짝 놀랐어요!',
+      '천둥이 우르릉 하고 인사했어요!']), { pri: 2 });
   }
 
   rollWeather(t) {
@@ -774,10 +843,10 @@ export class VillageScene extends Phaser.Scene {
   }
 
   showRainbow() {
-    const keep = store.P.decor.includes('rainbow') ? 0.85 : 0;
+    const keep = store.P.decor.includes('rainbow') ? RAINBOW_ALPHA : 0;
     this.tweens.killTweensOf(this.rainbowImg);
     this.tweens.add({
-      targets: this.rainbowImg, alpha: 0.95, duration: 2200, ease: 'Sine.easeOut',
+      targets: this.rainbowImg, alpha: RAINBOW_ALPHA * 1.25, duration: 2200, ease: 'Sine.easeOut',
       onComplete: () => this.time.delayedCall(11000, () => {
         if (!this.scene.isActive()) return;
         this.tweens.add({ targets: this.rainbowImg, alpha: keep, duration: 2600 });
@@ -999,10 +1068,11 @@ export class VillageScene extends Phaser.Scene {
     const m = Math.min(w, h);
     this.bg.sky.setDisplaySize(w, h);
     this.nightSky.setDisplaySize(w, h);
+    if (this.boltFlash) this.boltFlash.setPosition(0, 0).setSize(w, h);
     this.sun.setScale(m * 0.0009); // 위치는 update()의 호 궤적이 정한다
     this.moon.setScale(m * 0.0009);
     for (const s of this.stars) s.setPosition(s.fx * w, s.fy * h);
-    this.rainbowImg.setPosition(w * 0.5, h * 0.46).setScale(Math.min(1.2, w / 700));
+    this.rainbowImg.setPosition(w * 0.5, h * 0.42).setScale(Math.min(0.78, w / 1080));
     this.hillsFar.setPosition(w / 2, h * 0.62).setDisplaySize(Math.max(w * 1.05, 800), h * 0.24);
     this.hillsNear.setPosition(w / 2, h * 0.74).setDisplaySize(Math.max(w * 1.05, 800), h * 0.26);
     this.groundImg.setPosition(w / 2, h + 2).setDisplaySize(Math.max(w * 1.05, 800), h * 0.34);

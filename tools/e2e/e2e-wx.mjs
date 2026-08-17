@@ -175,7 +175,11 @@ async function main() {
     `집과의 거리(화면비) 최대 ${Math.max(...r2.nearHome).toFixed(3)}`);
   step('비: 아무도 자고 있지 않음 (비가 깨운다)',
     await page.evaluate(() => window.__game.scene.getScene('Village').walkers.every(c => !c.sleeping)), '');
-  step('비: 땅이 젖어 웅덩이가 생김', r2.wet > 0.15, `wet=${r2.wet.toFixed(2)}`);
+  // 젖는 속도는 프레임에 비례한다(헤드리스는 느리다) — 절대값 대신 '늘어난다'를 본다
+  await sleep(2500);
+  const wet2 = (await snap()).wet;
+  step('비: 땅이 점점 젖어 웅덩이가 생긴다', wet2 > r2.wet && wet2 > 0.1,
+    `wet ${r2.wet.toFixed(2)} → ${wet2.toFixed(2)}`);
 
   // 대피 중에도 탭 보상은 그대로 (설계 원칙)
   const wpos = await page.evaluate(() => {
@@ -432,6 +436,97 @@ async function main() {
     setTimeout(() => { clearInterval(iv); res({ bad, n }); }, 9000);
   }));
   step('친구들이 이젤 앞에 멈춰 서지 않는다', parked.bad === 0, `${parked.n}회 표집 중 ${parked.bad}회`);
+
+  /* ---------- 7e. 천둥번개 ---------- */
+  await setDay(50);
+  await force('rain', 300, true);
+  await sleep(900);
+  const boltSched = await page.evaluate(() => {
+    const v = window.__game.scene.getScene('Village');
+    return { at: v.wx.boltAt, now: v.time.now / 1000, i: v.wx.i };
+  });
+  step('번개: 비가 굵어지면 다음 번개가 예약된다',
+    boltSched.at > boltSched.now && boltSched.at - boltSched.now <= 23,
+    `${(boltSched.at - boltSched.now).toFixed(1)}초 뒤`);
+
+  // 부슬비(약한 비)에는 번개가 없다
+  await page.evaluate(() => { const v = window.__game.scene.getScene('Village'); v.wx.i = 0.3; });
+  await sleep(600);
+  const weakRain = await page.evaluate(() => window.__game.scene.getScene('Village').wx.boltAt);
+  step('번개: 부슬비에는 치지 않는다', weakRain === 0, `boltAt=${weakRain}`);
+  await page.evaluate(() => { const v = window.__game.scene.getScene('Village'); v.wx.i = 1; });
+  await sleep(400);
+
+  // 섬광 밝기 추적 (광과민성 안전: 봉우리 2회 이내, 최대 밝기 제한)
+  const flash = await page.evaluate(() => new Promise(res => {
+    const v = window.__game.scene.getScene('Village');
+    const before = v.walkers.map(c => ({ y: c.y, a: c.angle }));
+    v.walkers.forEach(c => { c.sleeping = true; });   // 자던 친구도 깨는지
+    const samples = [];
+    /* 폴짝은 제자리로 '돌아오는' 동작이라 끝난 뒤를 비교하면 안 움직인 것처럼 보인다.
+       움직이는 동안의 최대 변위를 재야 한다. */
+    const maxDev = v.walkers.map(() => 0);
+    const iv = setInterval(() => {
+      samples.push(+v.boltFlash.alpha.toFixed(3));
+      v.walkers.forEach((c, i) => {
+        const d = Math.max(Math.abs(c.y - before[i].y), Math.abs(c.angle - before[i].a) * 2);
+        if (d > maxDev[i]) maxDev[i] = d;
+      });
+    }, 16);
+    v.bolt();
+    // 헤드리스는 프레임이 느려 트윈도 실제 시간보다 천천히 흐른다 — 넉넉히 본다
+    setTimeout(() => {
+      clearInterval(iv);
+      res({ samples, peak: Math.max(...samples), end: v.boltFlash.alpha,
+        moved: maxDev.filter(d => d > 3).length, n: v.walkers.length,
+        asleep: v.walkers.filter(c => c.sleeping).length });
+    }, 3000);
+  }));
+  // 봉우리 = 올랐다 내려가는 지점의 수
+  let peaks = 0;
+  for (let i = 1; i < flash.samples.length - 1; i++) {
+    if (flash.samples[i] > 0.02 && flash.samples[i] >= flash.samples[i - 1] && flash.samples[i] > flash.samples[i + 1]) peaks++;
+  }
+  step('번개: 화면이 번쩍였다가 완전히 돌아온다',
+    flash.peak > 0.15 && flash.peak <= 0.45 && flash.end < 0.02,
+    `최대 ${flash.peak}, 끝 ${flash.end}`);
+  step('번개: 섬광 봉우리 2회 이하 (광과민성 안전)', peaks >= 1 && peaks <= 2, `${peaks}회`);
+  step('번개: 친구들이 깜짝 놀란다 + 자던 친구도 깬다',
+    flash.moved === flash.n && flash.asleep === 0,
+    `${flash.moved}/${flash.n}명 반응, 자는 친구 ${flash.asleep}명`);
+
+  // 밤에는 화면이 어두우니 섬광도 약하게
+  await setDay(170);
+  await sleep(700);
+  const nightPeak = await page.evaluate(() => new Promise(res => {
+    const v = window.__game.scene.getScene('Village');
+    let mx = 0;
+    const iv = setInterval(() => { mx = Math.max(mx, v.boltFlash.alpha); }, 16);
+    v.bolt();
+    setTimeout(() => { clearInterval(iv); res(mx); }, 1600);
+  }));
+  step('번개: 밤에는 섬광이 더 약하다', nightPeak > 0.05 && nightPeak < flash.peak,
+    `밤 ${nightPeak.toFixed(2)} < 낮 ${flash.peak}`);
+  await setDay(50);
+  await force('clear', 300, true);
+  await sleep(600);
+
+  /* ---------- 7f. 무지개 크기·진하기, 해·달 레이어 ---------- */
+  const look = await page.evaluate(() => {
+    const v = window.__game.scene.getScene('Village');
+    return {
+      rbAlpha: +v.rainbowImg.alpha.toFixed(2),
+      rbW: v.rainbowImg.displayWidth / v.scale.width,
+      sunD: v.sun.depth, moonD: v.moon.depth,
+      hillD: v.hillsNear.depth, groundD: v.groundImg.depth,
+    };
+  });
+  step('무지개: 화면을 덮지 않는 크기와 진하기 (상한)',
+    look.rbAlpha <= 0.55 && look.rbW < 0.62,
+    `alpha ${look.rbAlpha}, 폭 화면의 ${(look.rbW * 100).toFixed(0)}%`);
+  step('해·달: 언덕보다 앞, 땅보다 뒤',
+    look.sunD > look.hillD && look.sunD < look.groundD && look.moonD === look.sunD,
+    `해 ${look.sunD} / 언덕 ${look.hillD} / 땅 ${look.groundD}`);
 
   /* ---------- 8. 일정표가 정말 무작위인가 (400회 표집) ---------- */
   const stats = await page.evaluate(() => {
