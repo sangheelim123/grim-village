@@ -1,6 +1,6 @@
 /* 앱 버전 — 릴리스마다 올린다 (첫 화면 구석·부모 코너에 표시).
    sw.js의 CACHE 상수도 함께 올려야 설치된 PWA에 새 버전이 전달된다 */
-export const VERSION = '1.7.0';
+export const VERSION = '1.7.1';
 
 /* 판정·밸런스 상수 — 전부 관대한 쪽이 기본값 */
 export const TUNING = {
@@ -50,6 +50,7 @@ export const WEATHER = {
   boltMinI: 0.55,       // 비가 이만큼 굵어졌을 때만 (부슬비엔 번개가 없다)
   boltAlphaDay: 0.42,   // 낮 섬광 밝기
   boltAlphaNight: 0.26, // 밤은 화면이 어두워 같은 밝기도 훨씬 세게 느껴진다
+  boltMs: 1100,         // 번개 모양이 보이는 시간 — 짧으면 못 보고 지나간다
 };
 
 export const COLORS = {
