@@ -1,6 +1,6 @@
 /* 앱 버전 — 릴리스마다 올린다 (첫 화면 구석·부모 코너에 표시).
    sw.js의 CACHE 상수도 함께 올려야 설치된 PWA에 새 버전이 전달된다 */
-export const VERSION = '1.6.3';
+export const VERSION = '1.7.0';
 
 /* 판정·밸런스 상수 — 전부 관대한 쪽이 기본값 */
 export const TUNING = {
@@ -42,6 +42,14 @@ export const WEATHER = {
   repeatDamp: 0.45,
   chainChance: 0.16,    // 맑음을 건너뛰고 다른 날씨가 바로 이어질 확률
   resumeSec: 240,       // 앱을 껐다 이 시간 안에 돌아오면 날씨가 그대로 이어진다
+  /* 천둥번개 — 4~7세에게 무서우면 안 된다. 세 가지로 순화한다:
+     ① 섬광은 부드럽게, 짧게, 그리고 드물게 (광과민성 안전: 한 번에 두 번을 넘기지 않는다)
+     ② 소리는 '멀리서 우르릉' (audio.thunder는 200Hz 아래만 남긴다)
+     ③ 친구들은 무서워하는 게 아니라 '깜짝!' 하고 폴짝 — 놀람은 놀이가 된다 */
+  boltGapSec: [9, 22],  // 번개 사이 간격
+  boltMinI: 0.55,       // 비가 이만큼 굵어졌을 때만 (부슬비엔 번개가 없다)
+  boltAlphaDay: 0.42,   // 낮 섬광 밝기
+  boltAlphaNight: 0.26, // 밤은 화면이 어두워 같은 밝기도 훨씬 세게 느껴진다
 };
 
 export const COLORS = {

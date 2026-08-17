@@ -216,6 +216,39 @@ export const audio = {
     this._applyWx();
   },
 
+  /* 천둥: 일부러 '멀리서 우르릉'으로만 만든다.
+     가까운 벼락 소리(짧고 날카로운 쾅)는 유아에게 그냥 무섭다 —
+     낮은 소리만 남기고(200Hz 로우패스) 천천히 부풀었다 길게 사그라들게 한다. */
+  thunder(strength) {
+    if (!this.on) return;
+    try {
+      const mgr = this.scene && this.scene.sound;
+      const ctx = mgr && mgr.context;
+      if (!ctx || !ctx.createBufferSource || ctx.state === 'suspended') return;
+      const dur = 2.2;
+      const len = Math.floor(ctx.sampleRate * dur);
+      const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      let last = 0;
+      for (let i = 0; i < len; i++) { // 갈색 잡음 — 흰 잡음보다 훨씬 둥글고 낮다
+        const w = Math.random() * 2 - 1;
+        last = (last + 0.03 * w) / 1.03;
+        d[i] = last * 3;
+      }
+      const src = ctx.createBufferSource(); src.buffer = buf;
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass';
+      lp.frequency.value = 200; lp.Q.value = 0.4;
+      const g = ctx.createGain();
+      const t0 = ctx.currentTime;
+      const peak = 0.11 * clamp(strength == null ? 1 : strength, 0.3, 1);
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(peak, t0 + 0.35);      // 천천히 부풀고
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);      // 길게 사그라든다
+      src.connect(lp); lp.connect(g); g.connect(ctx.destination);
+      src.start(t0); src.stop(t0 + dur);
+    } catch (e) {}
+  },
+
   /* 말할 때 배경음을 낮춘다 — 4세는 소음 속 말소리 분리가 어렵다 */
   duck(on) {
     this._applyWx();
