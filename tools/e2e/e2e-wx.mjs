@@ -495,6 +495,31 @@ async function main() {
     flash.moved === flash.n && flash.asleep === 0,
     `${flash.moved}/${flash.n}명 반응, 자는 친구 ${flash.asleep}명`);
 
+  // 번개 줄기 모양 — 실제로 그려지고, 끝나면 흔적 없이 치워지는지
+  const shape = await page.evaluate(() => new Promise(res => {
+    const v = window.__game.scene.getScene('Village');
+    let maxCmd = 0, visibleMs = 0;
+    const t0 = performance.now();
+    const iv = setInterval(() => {
+      const n = (v.boltG.commandBuffer || []).length;
+      if (n > maxCmd) maxCmd = n;
+      if (v.boltG.alpha > 0.02 && n > 0) visibleMs = performance.now() - t0;
+    }, 16);
+    v.bolt();
+    /* 헤드리스는 프레임이 느려 트윈도 실제 시간보다 천천히 흐른다.
+       "1초쯤 보인다"는 실기기 기준이고, 여기서는 '충분히 오래 남았다가 치워진다'만 본다. */
+    setTimeout(() => {
+      clearInterval(iv);
+      res({ maxCmd, visibleMs: Math.round(visibleMs), left: (v.boltG.commandBuffer || []).length,
+        alpha: +v.boltG.alpha.toFixed(3) });
+    }, 9000);
+  }));
+  step('번개: 지그재그 줄기가 실제로 그려진다', shape.maxCmd > 100, `그리기 명령 ${shape.maxCmd}개`);
+  step('번개: 한참 남아 있다가(순간이 아니라) 사라진다', shape.visibleMs > 800,
+    `${shape.visibleMs}ms 보임`);
+  step('번개: 사라진 뒤 흔적을 남기지 않는다', shape.left === 0 && shape.alpha < 0.02,
+    `남은 명령 ${shape.left}개, alpha ${shape.alpha}`);
+
   // 밤에는 화면이 어두우니 섬광도 약하게
   await setDay(170);
   await sleep(700);

@@ -1,5 +1,5 @@
 /* 오프라인 캐시: 설치 시 전체 프리캐시, 이후 캐시 우선 */
-const CACHE = 'village-v4-19';
+const CACHE = 'village-v4-20';
 const ASSETS = [
   './', './index.html', './manifest.webmanifest',
   './vendor/phaser.min.js',

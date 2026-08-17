@@ -540,6 +540,9 @@ export class VillageScene extends Phaser.Scene {
        가장 위(60)에 두어야 비·친구·간판까지 한꺼번에 번쩍인다. */
     this.boltFlash = this.add.rectangle(0, 0, 10, 10, 0xffffff)
       .setOrigin(0).setDepth(60).setAlpha(0).setScrollFactor(0);
+    /* 번개 모양은 섬광보다 더 위(61). 흰 섬광 위에서도 보이도록 노란색으로 —
+       만화적인 노란 지그재그라야 아이 눈에 '번개'로 바로 읽힌다. */
+    this.boltG = this.add.graphics().setDepth(61).setAlpha(0);
     /* 비 온 뒤 물웅덩이 — 비가 그쳐도 세계에 자국이 남고 천천히 마른다 */
     this.puddleG = this.add.graphics().setDepth(-44);
     this._wetDrawn = -1;
@@ -690,6 +693,54 @@ export class VillageScene extends Phaser.Scene {
      무서운 연출이 아니라 '깜짝 놀랐다가 웃는' 순간을 만든다.
      섬광은 두 번을 넘지 않고(광과민성), 소리는 0.6초 뒤에 멀리서 우르릉 하며,
      친구들은 겁먹는 게 아니라 폴짝 뛰고 서로를 쳐다본다. */
+  /* 지그재그 한 줄기 — 위에서 아래로 꺾이며 내려오고, 중간에 한 번 갈라진다.
+     매번 다른 모양이 나오도록 마디마다 흔들어 준다. */
+  boltPath(x, y, endY, seg, spread) {
+    const pts = [[x, y]];
+    const step = (endY - y) / seg;
+    for (let i = 1; i <= seg; i++) {
+      const t = i / seg;
+      x += rand(-spread, spread) * (1 - t * 0.4); // 아래로 갈수록 덜 흔들린다
+      pts.push([x, y + step * i]);
+    }
+    return pts;
+  }
+
+  /* 겉→속 네 겹: 넓은 빛무리 → 주황 테두리 → 노란 몸통 → 흰 심지.
+     주황 테두리가 있어야 밝은 낮 하늘에서도 번개가 묻히지 않는다. */
+  strokeBolt(g, pts, w) {
+    for (const [col, alpha, mul] of [
+      [0xfff3a0, 0.40, 3.6], [0xff9838, 0.75, 2.0], [0xffd21e, 1, 1.25], [0xffffff, 1, 0.5]]) {
+      for (let i = 1; i < pts.length; i++) {
+        const taper = 1 - (i / pts.length) * 0.55; // 끝으로 갈수록 가늘어진다
+        g.lineStyle(Math.max(1, w * mul * taper), col, alpha);
+        g.beginPath();
+        g.moveTo(pts[i - 1][0], pts[i - 1][1]);
+        g.lineTo(pts[i][0], pts[i][1]);
+        g.strokePath();
+      }
+    }
+  }
+
+  drawBolt() {
+    const { width: w, height: h } = this.scale;
+    const g = this.boltG;
+    g.clear();
+    // 화면 한복판(섬·게시판)을 피해 좌우 하늘 중 한쪽에서 친다
+    const side = Math.random() < 0.5 ? rand(0.17, 0.36) : rand(0.64, 0.83);
+    const x0 = w * side, y0 = -h * 0.02;
+    const endY = h * rand(0.38, 0.5);
+    const wid = Math.max(3, Math.min(w, h) * 0.0095);
+    const main = this.boltPath(x0, y0, endY, 7, w * 0.045);
+    this.strokeBolt(g, main, wid);
+    // 가지 하나 — 중간 어디쯤에서 갈라져 나간다
+    const bi = 2 + Math.floor(Math.random() * 3);
+    const b0 = main[bi];
+    const branch = this.boltPath(b0[0], b0[1], b0[1] + (endY - b0[1]) * rand(0.5, 0.9), 4, w * 0.05);
+    branch[branch.length - 1][0] += (Math.random() < 0.5 ? -1 : 1) * w * rand(0.03, 0.07);
+    this.strokeBolt(g, branch, wid * 0.6);
+  }
+
   bolt() {
     if (!this.boltFlash) return;
     const night = (this._nf || 0) > 0.5;
@@ -697,6 +748,24 @@ export class VillageScene extends Phaser.Scene {
     const f = this.boltFlash;
     this.tweens.killTweensOf(f);
     f.setAlpha(0);
+
+    /* 번개 줄기: 번쩍 나타나 잠깐 깜박이다 천천히 사라진다.
+       섬광(화면 전체)은 짧게 끝나지만 줄기는 1초쯤 남아 있어야 아이가 알아본다. */
+    const bg = this.boltG;
+    this.tweens.killTweensOf(bg);
+    this.drawBolt();
+    const ms = WEATHER.boltMs;
+    this.tweens.chain({
+      targets: bg,
+      tweens: [
+        { alpha: 1, duration: 40 },
+        { alpha: 0.55, duration: 110 },
+        { alpha: 1, duration: 60, delay: 90 },   // 두 번째 섬광과 함께 되살아난다
+        { alpha: 0.8, duration: 120 },
+        // 다 사라지면 커맨드 버퍼도 비운다 (체인 최상위 onComplete는 불리지 않는다)
+        { alpha: 0, duration: ms - 420, ease: 'Sine.easeIn', onComplete: () => bg.clear() },
+      ],
+    });
     /* 번쩍 → 사그라듦 → 한 번 더 여리게. 두 번뿐이고 총 0.9초 안에 끝난다. */
     this.tweens.chain({
       targets: f,
