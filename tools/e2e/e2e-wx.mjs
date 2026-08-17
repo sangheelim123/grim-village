@@ -500,19 +500,23 @@ async function main() {
     const v = window.__game.scene.getScene('Village');
     let maxCmd = 0, visibleMs = 0;
     const t0 = performance.now();
+    /* 헤드리스는 프레임이 느려 트윈도 실제 시간보다 천천히 흐른다 — 벽시계로 기다리면
+       번개가 아직 사그라드는 중인데 "안 치웠다"고 잘못 읽는다(실제로 그렇게 한 번 틀렸다).
+       그래서 '치워질 때까지' 기다리고, 9초는 그래도 안 되면 포기하는 상한으로만 쓴다.
+       "1초쯤 보인다"도 실기기 기준이라 여기서는 '충분히 오래 남았다'만 본다. */
+    const done = () => {
+      clearInterval(iv); clearTimeout(to);
+      res({ maxCmd, visibleMs: Math.round(visibleMs), left: (v.boltG.commandBuffer || []).length,
+        alpha: +v.boltG.alpha.toFixed(3) });
+    };
     const iv = setInterval(() => {
       const n = (v.boltG.commandBuffer || []).length;
       if (n > maxCmd) maxCmd = n;
       if (v.boltG.alpha > 0.02 && n > 0) visibleMs = performance.now() - t0;
+      if (visibleMs > 0 && n === 0) done(); // 다 사그라들고 버퍼까지 비워졌다
     }, 16);
+    const to = setTimeout(done, 9000);
     v.bolt();
-    /* 헤드리스는 프레임이 느려 트윈도 실제 시간보다 천천히 흐른다.
-       "1초쯤 보인다"는 실기기 기준이고, 여기서는 '충분히 오래 남았다가 치워진다'만 본다. */
-    setTimeout(() => {
-      clearInterval(iv);
-      res({ maxCmd, visibleMs: Math.round(visibleMs), left: (v.boltG.commandBuffer || []).length,
-        alpha: +v.boltG.alpha.toFixed(3) });
-    }, 9000);
   }));
   step('번개: 지그재그 줄기가 실제로 그려진다', shape.maxCmd > 100, `그리기 명령 ${shape.maxCmd}개`);
   step('번개: 한참 남아 있다가(순간이 아니라) 사라진다', shape.visibleMs > 800,

@@ -1,11 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 150">
+<g transform="translate(120,75) scale(0.92) translate(-120,-75)">
+<!-- 스티커 테두리 — 초록 배경 위에서 "여기가 문"이라고 알려 주는 윤곽선.
+     같은 실루엣을 밝은 크림색으로 두껍게 먼저 그린다. -->
+<g fill="#fffaf0" stroke="#fffaf0" stroke-width="11" stroke-linejoin="round">
+<path d="M28,54 Q22,98 62,122 Q94,144 120,148 Q146,144 178,122 Q218,98 212,54 Z"/>
+<ellipse cx="120" cy="49" rx="112" ry="31"/>
+</g>
 <path d="M28,54 Q22,98 62,122 Q94,144 120,148 Q146,144 178,122 Q218,98 212,54 Z" fill="#b5794a"/>
 <path d="M42,74 Q54,106 86,122 Q72,96 62,72 Z" fill="#a76b3f" opacity="0.5"/>
 <g stroke="#8f6a3e" stroke-width="6" stroke-linecap="round" fill="none">
 <path d="M104,144 Q100,156 90,153"/><path d="M136,146 Q141,158 151,153"/>
 </g>
-<ellipse cx="120" cy="52" rx="112" ry="30" fill="#6fc257"/>
-<ellipse cx="120" cy="46" rx="112" ry="30" fill="#84cf6a"/>
-<path d="M14,44 Q60,62 120,62 Q180,62 226,44 Q226,52 200,64 Q150,78 120,78 Q90,78 40,64 Q14,52 14,44 Z" fill="#8ed873" opacity="0.55"/>
-<g fill="#5cb148"><path d="M54,32 Q52,20 58,14 Q60,24 60,32 Z"/><path d="M178,30 Q182,18 188,14 Q186,24 184,32 Z"/></g>
+<ellipse cx="120" cy="52" rx="112" ry="30" fill="#7cc94b"/>
+<ellipse cx="120" cy="46" rx="112" ry="30" fill="#93d95e"/>
+<path d="M14,44 Q60,62 120,62 Q180,62 226,44 Q226,52 200,64 Q150,78 120,78 Q90,78 40,64 Q14,52 14,44 Z" fill="#a3e070" opacity="0.55"/>
+<g fill="#68b93c"><path d="M54,32 Q52,20 58,14 Q60,24 60,32 Z"/><path d="M178,30 Q182,18 188,14 Q186,24 184,32 Z"/></g>
+</g>
 </svg>
