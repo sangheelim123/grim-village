@@ -1182,7 +1182,9 @@ export class VillageScene extends Phaser.Scene {
       cont.setPosition(isl.nx * w, isl.ny * h);
       cont.imgRef.setScale(signScale * (isl.sc || 1));
       cont.labelRef.setPosition(0, cont.imgRef.displayHeight * 0.62).setFontSize(Math.max(17, 24 * signScale));
-      cont.platRef.setScale(signScale * (isl.sc || 1) * 1.05)
+      /* 1.14 = 1.05 / 0.92 — 발판 SVG 안에서 그림을 0.92로 줄여 테두리 자리를 만들었다.
+         그만큼 되돌려 놓아야 예전과 같은 크기로 보인다. */
+      cont.platRef.setScale(signScale * (isl.sc || 1) * 1.14)
         .setPosition(0, cont.imgRef.displayHeight * 0.42);
       cont.setSize(cont.imgRef.displayWidth, cont.imgRef.displayHeight + 30);
       // 컨테이너 히트 영역은 (0,0,w,h) 좌상단 규약 (common.js pressify 참고)
