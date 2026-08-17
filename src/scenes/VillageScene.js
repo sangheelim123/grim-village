@@ -752,7 +752,11 @@ export class VillageScene extends Phaser.Scene {
     /* 번개 줄기: 번쩍 나타나 잠깐 깜박이다 천천히 사라진다.
        섬광(화면 전체)은 짧게 끝나지만 줄기는 1초쯤 남아 있어야 아이가 알아본다. */
     const bg = this.boltG;
+    /* 앞 번개가 아직 사그라드는 중이면 killTweensOf가 그 체인의 onComplete를 건너뛴다 —
+       그러면 커맨드 버퍼가 남고, Graphics는 alpha가 0이어도 매 프레임 버퍼를 통째로
+       다시 처리한다. 새로 그리기 전에 여기서 확실히 비운다. */
     this.tweens.killTweensOf(bg);
+    bg.clear();
     this.drawBolt();
     const ms = WEATHER.boltMs;
     this.tweens.chain({
